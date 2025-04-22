@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
@@ -35,35 +34,29 @@ class AudioExtractorViewModel extends ChangeNotifier {
     }
   }
 
-  // Pick an MP3 file using FilePicker
-  Future<void> pickMP3File() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
-        allowedExtensions: ['mp3'],
-      );
+  // Set audio file from the View
+  void setAudioFile(String path, String name, double duration) {
+    _audioFile = AudioFile(
+      path: path,
+      name: name,
+      duration: duration,
+    );
+    
+    // Reset positions when a new file is selected
+    _startPosition = 0.0;
+    _endPosition = duration;
+    _extractionResult = ExtractionResult(
+      status: ExtractionStatus.none,
+      message: 'File selected: $name',
+    );
+    
+    notifyListeners();
+  }
 
-      if (result != null) {
-        _audioFile = AudioFile(
-          path: result.files.single.path,
-          name: result.files.single.name,
-          duration: 60.0, // Default duration - in a real app, you'd extract this from the file
-        );
-        
-        // Reset positions when a new file is selected
-        _startPosition = 0.0;
-        _endPosition = _audioFile.duration;
-        _extractionResult = ExtractionResult(
-          status: ExtractionStatus.none,
-          message: 'File selected: ${_audioFile.name}',
-        );
-        
-        notifyListeners();
-      }
-    } catch (e) {
-      _extractionResult = ExtractionResult.error('Error selecting file: $e');
-      notifyListeners();
-    }
+  // Set error message
+  void setError(String errorMessage) {
+    _extractionResult = ExtractionResult.error(errorMessage);
+    notifyListeners();
   }
 
   // Extract a portion of the MP3 file
