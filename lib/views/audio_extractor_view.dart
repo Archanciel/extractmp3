@@ -116,10 +116,47 @@ class AudioExtractorView extends StatelessWidget {
     }
   }
 
-  // Load and play extracted MP3
-  Future<void> _playExtractedFile(BuildContext context, AudioPlayerViewModel playerViewModel, String filePath,) async {
-    await playerViewModel.loadFile(filePath);
-    await playerViewModel.togglePlay();
+  // Load and play extracted MP3 with error handling
+  Future<void> _playExtractedFile(BuildContext context, String filePath) async {
+    final playerViewModel = Provider.of<AudioPlayerViewModel>(
+      context, 
+      listen: false,
+    );
+    
+    // Reset any previous errors
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    
+    try {
+      await playerViewModel.loadFile(filePath);
+      if (!playerViewModel.hasError) {
+        await playerViewModel.togglePlay();
+      } else {
+        _showErrorSnackBar(context, playerViewModel.errorMessage);
+      }
+    } catch (e) {
+      _showErrorSnackBar(context, 'Error playing file: $e');
+    }
+  }
+  
+  void _showErrorSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Repair',
+          textColor: Colors.white,
+          onPressed: () {
+            final playerViewModel = Provider.of<AudioPlayerViewModel>(
+              context, 
+              listen: false,
+            );
+            playerViewModel.tryRepairPlayer();
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -251,79 +288,111 @@ class AudioExtractorView extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   
-                  // Play/Pause Button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: playerViewModel.isLoaded
-                            ? () => playerViewModel.togglePlay()
-                            : () => _playExtractedFile(
-                                context, 
-                                playerViewModel,
-                                viewModel.extractionResult.outputPath!,
-                              ),
-                        icon: Icon(
-                          playerViewModel.isPlaying
-                              ? Icons.pause
-                              : Icons.play_arrow,
-                        ),
-                        label: Text(
-                          playerViewModel.isPlaying ? 'Pause' : 'Play',
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  // Player progress bar (only visible when file is loaded)
-                  if (playerViewModel.isLoaded) ...[
-                    const SizedBox(height: 8),
-                    SliderTheme(
-                      data: SliderThemeData(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 8,
-                        ),
-                      ),
-                      child: Slider(
-                        value: playerViewModel.progressPercent.clamp(0.0, 1.0),
-                        onChanged: (value) {
-                          playerViewModel.seekByPercentage(value);
-                        },
-                      ),
-                    ),
-                    
-                    // Time display
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(_formatDurationFromDuration(
-                              playerViewModel.position)),
-                          Text(_formatDurationFromDuration(
-                              playerViewModel.duration)),
-                        ],
-                      ),
-                    ),
-                    
-                    // File name display
-                    const SizedBox(height: 8),
-                    Text(
-                      'Playing: ${_getFileName(viewModel.extractionResult.outputPath!)}',
-                      style: const TextStyle(
-                        fontStyle: FontStyle.italic,
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                  // Show player UI
+                  _buildAudioPlayerControls(context, viewModel, playerViewModel),
                 ],
               ],
             );
           },
         ),
       ),
+    );
+  }
+
+  // Separated audio player controls for better organization
+  Widget _buildAudioPlayerControls(
+    BuildContext context, 
+    AudioExtractorViewModel viewModel,
+    AudioPlayerViewModel playerViewModel,
+  ) {
+    return Column(
+      children: [
+        // Play/Pause Button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              onPressed: playerViewModel.hasError
+                  ? () => playerViewModel.tryRepairPlayer()
+                  : playerViewModel.isLoaded
+                      ? () => playerViewModel.togglePlay()
+                      : () => _playExtractedFile(
+                          context, 
+                          viewModel.extractionResult.outputPath!,
+                        ),
+              icon: Icon(
+                playerViewModel.hasError
+                    ? Icons.refresh
+                    : playerViewModel.isPlaying
+                        ? Icons.pause
+                        : Icons.play_arrow,
+              ),
+              label: Text(
+                playerViewModel.hasError
+                    ? 'Retry'
+                    : playerViewModel.isPlaying 
+                        ? 'Pause' 
+                        : 'Play',
+              ),
+            ),
+          ],
+        ),
+        
+        // Player progress bar (only visible when file is loaded and no errors)
+        if (playerViewModel.isLoaded && !playerViewModel.hasError) ...[
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 8,
+              ),
+            ),
+            child: Slider(
+              value: playerViewModel.progressPercent.clamp(0.0, 1.0),
+              onChanged: (value) {
+                playerViewModel.seekByPercentage(value);
+              },
+            ),
+          ),
+          
+          // Time display
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_formatDurationFromDuration(
+                    playerViewModel.position)),
+                Text(_formatDurationFromDuration(
+                    playerViewModel.duration)),
+              ],
+            ),
+          ),
+          
+          // File name display
+          const SizedBox(height: 8),
+          Text(
+            'Playing: ${_getFileName(viewModel.extractionResult.outputPath!)}',
+            style: const TextStyle(
+              fontStyle: FontStyle.italic,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+        
+        // Error message (if any)
+        if (playerViewModel.hasError)
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              playerViewModel.errorMessage,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ),
+      ],
     );
   }
 

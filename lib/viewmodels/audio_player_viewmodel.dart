@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
 class AudioPlayerViewModel extends ChangeNotifier {
   // The audio player instance
-  final AudioPlayer _player = AudioPlayer();
+  AudioPlayer? _player;
   
   // Current playback state
   bool _isPlaying = false;
@@ -13,89 +15,167 @@ class AudioPlayerViewModel extends ChangeNotifier {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   
+  // Error tracking
+  bool _hasError = false;
+  String _errorMessage = '';
+  
+  // Stream subscriptions
+  List<StreamSubscription?> _subscriptions = [];
+  
   // Getters
   bool get isPlaying => _isPlaying;
   bool get isLoaded => _isLoaded;
   String? get currentFilePath => _currentFilePath;
   Duration get duration => _duration;
   Duration get position => _position;
+  bool get hasError => _hasError;
+  String get errorMessage => _errorMessage;
+  
   double get progressPercent => _duration.inMilliseconds > 0 
       ? _position.inMilliseconds / _duration.inMilliseconds 
       : 0.0;
   
   AudioPlayerViewModel() {
-    // Listen to player state changes
-    _player.playerStateStream.listen((state) {
-      _isPlaying = state.playing;
-      notifyListeners();
-    });
+    _initializePlayer();
+  }
+  
+  void _initializePlayer() {
+    try {
+      // Create a new player instance
+      _disposeCurrentPlayer();
+      _player = AudioPlayer();
+      _setupPlayerListeners();
+    } catch (e) {
+      _setError('Error initializing player: $e');
+    }
+  }
+  
+  void _setupPlayerListeners() {
+    if (_player == null) return;
     
-    // Listen to duration changes
-    _player.durationStream.listen((newDuration) {
-      if (newDuration != null) {
-        _duration = newDuration;
+    // Clear previous subscriptions if any
+    _cancelSubscriptions();
+    
+    try {
+      // Listen to player state changes
+      _subscriptions.add(_player!.playerStateStream.listen((state) {
+        _isPlaying = state.playing;
         notifyListeners();
-      }
-    });
-    
-    // Listen to position changes
-    _player.positionStream.listen((newPosition) {
-      _position = newPosition;
-      notifyListeners();
-    });
+      }, onError: (e) {
+        debugPrint('Player state error: $e');
+      }));
+      
+      // Listen to duration changes
+      _subscriptions.add(_player!.durationStream.listen((newDuration) {
+        if (newDuration != null) {
+          _duration = newDuration;
+          notifyListeners();
+        }
+      }, onError: (e) {
+        debugPrint('Duration stream error: $e');
+      }));
+      
+      // Listen to position changes
+      _subscriptions.add(_player!.positionStream.listen((newPosition) {
+        _position = newPosition;
+        notifyListeners();
+      }, onError: (e) {
+        debugPrint('Position stream error: $e');
+      }));
+      
+      // Listen for processing state to catch completion
+      _subscriptions.add(_player!.processingStateStream.listen((state) {
+        if (state == ProcessingState.completed) {
+          // Reset position to beginning
+          _player?.seek(Duration.zero);
+          _player?.pause();
+        }
+      }, onError: (e) {
+        debugPrint('Processing state error: $e');
+      }));
+    } catch (e) {
+      debugPrint('Error setting up listeners: $e');
+    }
+  }
+  
+  void _cancelSubscriptions() {
+    for (var subscription in _subscriptions) {
+      subscription?.cancel();
+    }
+    _subscriptions = [];
   }
   
   // Load a file for playback
   Future<void> loadFile(String filePath) async {
+    // Reset error state
+    _hasError = false;
+    _errorMessage = '';
+    
     try {
       if (!File(filePath).existsSync()) {
-        debugPrint('File does not exist: $filePath');
+        _setError('File does not exist: $filePath');
         return;
       }
       
-      await _player.stop();
-      
-      // Properly dispose and recreate player if there were issues
-      try {
-        await _player.setFilePath(filePath);
-      } catch (e) {
-        debugPrint('Error setting file path: $e');
-        // Try with a slight delay (sometimes helps with initialization issues)
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _player.setFilePath(filePath);
+      // On Windows, recreate the player for each file to avoid threading issues
+      if (Platform.isWindows) {
+        _initializePlayer();
       }
       
-      _isLoaded = true;
-      _currentFilePath = filePath;
-      notifyListeners();
+      try {
+        if (_player == null) {
+          _initializePlayer();
+        }
+        
+        // Wrap in a try-catch to handle potential PlatformExceptions
+        try {
+          await _player!.setFilePath(filePath);
+          _isLoaded = true;
+          _currentFilePath = filePath;
+          notifyListeners();
+        } on PlatformException catch (e) {
+          debugPrint('Platform exception loading file: $e');
+          // Try one more time with a recreated player
+          _initializePlayer();
+          await Future.delayed(const Duration(milliseconds: 500));
+          await _player!.setFilePath(filePath);
+          _isLoaded = true;
+          _currentFilePath = filePath;
+          notifyListeners();
+        }
+      } catch (e) {
+        _setError('Error loading audio: $e');
+      }
     } catch (e) {
-      debugPrint('Error loading audio file: $e');
-      _isLoaded = false;
-      notifyListeners();
+      _setError('Error loading audio file: $e');
     }
   }
   
   // Play or pause the current track
   Future<void> togglePlay() async {
-    if (!_isLoaded) return;
+    if (!_isLoaded || _player == null) return;
     
     try {
       if (_isPlaying) {
-        await _player.pause();
+        await _player!.pause();
       } else {
-        await _player.play();
+        // For Windows, add a safety check before playing
+        if (Platform.isWindows && _player!.processingState == ProcessingState.idle) {
+          await loadFile(_currentFilePath!);
+        }
+        await _player!.play();
       }
     } catch (e) {
-      debugPrint('Error toggling playback: $e');
+      _setError('Error toggling playback: $e');
     }
   }
   
   // Seek to a specific position
   Future<void> seekTo(Duration position) async {
-    if (!_isLoaded) return;
+    if (!_isLoaded || _player == null) return;
     
     try {
-      await _player.seek(position);
+      await _player!.seek(position);
     } catch (e) {
       debugPrint('Error seeking: $e');
     }
@@ -103,7 +183,7 @@ class AudioPlayerViewModel extends ChangeNotifier {
   
   // Seek by percentage (0.0 to 1.0)
   Future<void> seekByPercentage(double percentage) async {
-    if (!_isLoaded || _duration == Duration.zero) return;
+    if (!_isLoaded || _duration == Duration.zero || _player == null) return;
     
     final newPosition = Duration(
       milliseconds: (percentage * _duration.inMilliseconds).round(),
@@ -111,10 +191,34 @@ class AudioPlayerViewModel extends ChangeNotifier {
     await seekTo(newPosition);
   }
   
+  // Set error state
+  void _setError(String message) {
+    _hasError = true;
+    _errorMessage = message;
+    _isLoaded = false;
+    debugPrint('AudioPlayer error: $message');
+    notifyListeners();
+  }
+  
+  // Attempt to fix player issues
+  Future<void> tryRepairPlayer() async {
+    _initializePlayer();
+    if (_currentFilePath != null) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      await loadFile(_currentFilePath!);
+    }
+  }
+  
+  void _disposeCurrentPlayer() {
+    _cancelSubscriptions();
+    _player?.dispose();
+    _player = null;
+  }
+  
   // Clean up resources
   @override
   void dispose() {
-    _player.dispose();
+    _disposeCurrentPlayer();
     super.dispose();
   }
 }
