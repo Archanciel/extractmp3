@@ -116,22 +116,70 @@ class AudioExtractorView extends StatelessWidget {
                     style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 16),
-                  Text('Start Position (seconds): ${viewModel.startPosition.toStringAsFixed(1)}'),
+                  Row(
+                    children: [
+                      const Text('Start Position: '),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '0.0',
+                            suffixText: 's',
+                          ),
+                          controller: TextEditingController(text: viewModel.startPosition.toStringAsFixed(1)),
+                          onChanged: (value) {
+                            final newValue = double.tryParse(value);
+                            if (newValue != null && newValue >= 0 && newValue < viewModel.endPosition) {
+                              viewModel.startPosition = newValue;
+                            }
+                          },
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(_formatDuration(viewModel.startPosition)),
+                    ],
+                  ),
                   Slider(
                     value: viewModel.startPosition,
                     min: 0,
                     max: viewModel.endPosition > 0 ? viewModel.endPosition : viewModel.audioFile.duration,
-                    divisions: 100,
+                    divisions: (viewModel.audioFile.duration * 10).toInt(), // Divisions for tenths of seconds
                     onChanged: (value) {
                       viewModel.startPosition = value;
                     },
                   ),
-                  Text('End Position (seconds): ${viewModel.endPosition.toStringAsFixed(1)}'),
+                  Row(
+                    children: [
+                      const Text('End Position: '),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '60.0',
+                            suffixText: 's',
+                          ),
+                          controller: TextEditingController(text: viewModel.endPosition.toStringAsFixed(1)),
+                          onChanged: (value) {
+                            final newValue = double.tryParse(value);
+                            if (newValue != null && newValue > viewModel.startPosition && newValue <= viewModel.audioFile.duration) {
+                              viewModel.endPosition = newValue;
+                            }
+                          },
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(_formatDuration(viewModel.endPosition)),
+                    ],
+                  ),
                   Slider(
                     value: viewModel.endPosition,
                     min: viewModel.startPosition,
                     max: viewModel.audioFile.duration,
-                    divisions: 100,
+                    divisions: (viewModel.audioFile.duration * 10).toInt(), // Divisions for tenths of seconds
                     onChanged: (value) {
                       viewModel.endPosition = value;
                     },
