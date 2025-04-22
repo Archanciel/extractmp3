@@ -8,13 +8,13 @@ class AudioExtractorViewModel extends ChangeNotifier {
   double _startPosition = 0.0;
   double _endPosition = 60.0;
   ExtractionResult _extractionResult = ExtractionResult.initial();
-
+  
   // Getters
   AudioFile get audioFile => _audioFile;
   double get startPosition => _startPosition;
   double get endPosition => _endPosition;
   ExtractionResult get extractionResult => _extractionResult;
-
+  
   // Setters
   set startPosition(double value) {
     if (value >= 0 && value < _endPosition) {
@@ -22,18 +22,17 @@ class AudioExtractorViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
-
+  
   set endPosition(double value) {
     if (value > _startPosition && value <= _audioFile.duration) {
       _endPosition = value;
       notifyListeners();
     }
   }
-
+  
   // Set audio file from the View
   void setAudioFile(String path, String name, double duration) {
     _audioFile = AudioFile(path: path, name: name, duration: duration);
-
     // Reset positions when a new file is selected
     _startPosition = 0.0;
     _endPosition = duration;
@@ -41,22 +40,21 @@ class AudioExtractorViewModel extends ChangeNotifier {
       status: ExtractionStatus.none,
       message: 'File selected: $name',
     );
-
     notifyListeners();
   }
-
+  
   // Set error message
   void setError(String errorMessage) {
     _extractionResult = ExtractionResult.error(errorMessage);
     notifyListeners();
   }
-
+  
   // Start processing
   void startProcessing() {
     _extractionResult = ExtractionResult.processing();
     notifyListeners();
   }
-
+  
   // Extract a portion of the MP3 file
   Future<void> extractMP3(String outputPath) async {
     if (_audioFile.path == null) {
@@ -66,7 +64,7 @@ class AudioExtractorViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-
+    
     try {
       // For Windows, use the system's FFmpeg directly
       try {
@@ -80,13 +78,12 @@ class AudioExtractorViewModel extends ChangeNotifier {
           outputPath,
           '-y', // Overwrite output files without asking
         ];
-
+        
         // Print the command for debugging
         debugPrint('FFmpeg command: ffmpeg ${arguments.join(' ')}');
-
+        
         // Execute FFmpeg as a process
         final ProcessResult result = await Process.run('ffmpeg', arguments);
-
         if (result.exitCode == 0) {
           _extractionResult = ExtractionResult.success(outputPath);
         } else {
@@ -107,5 +104,11 @@ class AudioExtractorViewModel extends ChangeNotifier {
       _extractionResult = ExtractionResult.error('Error during extraction: $e');
       notifyListeners();
     }
+  }
+  
+  // Reset extraction result
+  void resetExtractionResult() {
+    _extractionResult = ExtractionResult.initial();
+    notifyListeners();
   }
 }

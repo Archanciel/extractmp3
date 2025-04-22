@@ -5,8 +5,15 @@ import 'package:provider/provider.dart';
 import 'package:window_size/window_size.dart';
 import 'views/audio_extractor_view.dart';
 import 'viewmodels/audio_extractor_viewmodel.dart';
+import 'viewmodels/audio_player_viewmodel.dart';
 
 Future<void> main() async {
+  // Ensure Flutter is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Just Audio will automatically register its Windows implementation
+  // We don't need explicit registration with newer versions
+
   await setWindowsAppSizeAndPosition();
 
   runApp(const MyApp());
@@ -14,9 +21,7 @@ Future<void> main() async {
 
 /// If app runs on Windows, Linux or MacOS, set the app size
 /// and position.
-Future<void> setWindowsAppSizeAndPosition({
-  bool isTest = true,
-}) async {
+Future<void> setWindowsAppSizeAndPosition({bool isTest = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -27,15 +32,19 @@ Future<void> setWindowsAppSizeAndPosition({
 
       // Définissez la largeur et la hauteur de votre fenêtre
       double windowWidth = (isTest) ? 900 : 730;
-      const double windowHeight = 1300;
+      const double windowHeight = 1400;
 
       // Calculez la position X pour placer la fenêtre sur le côté droit de l'écran
       final double posX = screenRect.right - windowWidth + 10;
       // Optionnellement, ajustez la position Y selon vos préférences
       final double posY = (screenRect.height - windowHeight) / 2;
 
-      final Rect windowRect =
-          Rect.fromLTWH(posX, posY, windowWidth, windowHeight);
+      final Rect windowRect = Rect.fromLTWH(
+        posX,
+        posY,
+        windowWidth,
+        windowHeight,
+      );
       setWindowFrame(windowRect);
     });
   }
@@ -48,12 +57,14 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MP3 Extractor',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: ChangeNotifierProvider(
-        create: (context) => AudioExtractorViewModel(),
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      home: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (context) => AudioExtractorViewModel(),
+          ),
+          ChangeNotifierProvider(create: (context) => AudioPlayerViewModel()),
+        ],
         child: const AudioExtractorView(),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../viewmodels/audio_extractor_viewmodel.dart';
+import '../viewmodels/audio_player_viewmodel.dart';
 
 class AudioExtractorView extends StatelessWidget {
   const AudioExtractorView({super.key});
@@ -115,14 +116,20 @@ class AudioExtractorView extends StatelessWidget {
     }
   }
 
+  // Load and play extracted MP3
+  Future<void> _playExtractedFile(BuildContext context, AudioPlayerViewModel playerViewModel, String filePath,) async {
+    await playerViewModel.loadFile(filePath);
+    await playerViewModel.togglePlay();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('MP3 Extractor')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Consumer<AudioExtractorViewModel>(
-          builder: (context, viewModel, child) {
+        child: Consumer2<AudioExtractorViewModel, AudioPlayerViewModel>(
+          builder: (context, viewModel, playerViewModel, child) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -230,6 +237,88 @@ class AudioExtractorView extends StatelessWidget {
                       ),
                     ),
                   ),
+                
+                // Audio Player Section - Only visible when extraction is successful
+                if (viewModel.extractionResult.isSuccess &&
+                    viewModel.extractionResult.outputPath != null) ...[
+                  const Divider(height: 32),
+                  const Text(
+                    'Audio Player',
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Play/Pause Button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: playerViewModel.isLoaded
+                            ? () => playerViewModel.togglePlay()
+                            : () => _playExtractedFile(
+                                context, 
+                                playerViewModel,
+                                viewModel.extractionResult.outputPath!,
+                              ),
+                        icon: Icon(
+                          playerViewModel.isPlaying
+                              ? Icons.pause
+                              : Icons.play_arrow,
+                        ),
+                        label: Text(
+                          playerViewModel.isPlaying ? 'Pause' : 'Play',
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // Player progress bar (only visible when file is loaded)
+                  if (playerViewModel.isLoaded) ...[
+                    const SizedBox(height: 8),
+                    SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8,
+                        ),
+                      ),
+                      child: Slider(
+                        value: playerViewModel.progressPercent.clamp(0.0, 1.0),
+                        onChanged: (value) {
+                          playerViewModel.seekByPercentage(value);
+                        },
+                      ),
+                    ),
+                    
+                    // Time display
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(_formatDurationFromDuration(
+                              playerViewModel.position)),
+                          Text(_formatDurationFromDuration(
+                              playerViewModel.duration)),
+                        ],
+                      ),
+                    ),
+                    
+                    // File name display
+                    const SizedBox(height: 8),
+                    Text(
+                      'Playing: ${_getFileName(viewModel.extractionResult.outputPath!)}',
+                      style: const TextStyle(
+                        fontStyle: FontStyle.italic,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
               ],
             );
           },
@@ -247,5 +336,15 @@ class AudioExtractorView extends StatelessWidget {
         minutes < 10 && hours > 0 ? '0$minutes:' : '$minutes:';
     final String secondsStr = secs < 10 ? '0$secs' : '$secs';
     return '$hoursStr$minutesStr$secondsStr';
+  }
+  
+  String _formatDurationFromDuration(Duration duration) {
+    final int minutes = duration.inMinutes;
+    final int seconds = duration.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+  
+  String _getFileName(String path) {
+    return path.split(Platform.pathSeparator).last;
   }
 }
