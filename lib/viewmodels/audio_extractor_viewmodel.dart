@@ -59,43 +59,21 @@ class AudioExtractorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Start processing
+  void startProcessing() {
+    _extractionResult = ExtractionResult.processing();
+    notifyListeners();
+  }
+
   // Extract a portion of the MP3 file
-  Future<void> extractMP3() async {
+  Future<void> extractMP3(String outputPath) async {
     if (_audioFile.path == null) {
       _extractionResult = ExtractionResult.error('Please select an MP3 file first');
       notifyListeners();
       return;
     }
 
-    _extractionResult = ExtractionResult.processing();
-    notifyListeners();
-
     try {
-      // Get a directory that works cross-platform
-      Directory directory;
-      if (Platform.isAndroid) {
-        // Request storage permission for Android
-        var status = await Permission.storage.request();
-        if (!status.isGranted) {
-          _extractionResult = ExtractionResult.error('Storage permission denied');
-          notifyListeners();
-          return;
-        }
-        // Try to get external storage for Android
-        directory = (await getExternalStorageDirectory())!;
-      } else if (Platform.isIOS) {
-        // Use documents directory for iOS
-        directory = await getApplicationDocumentsDirectory();
-      } else {
-        // For other platforms (Windows, macOS, Linux) use application documents directory
-        directory = await getApplicationDocumentsDirectory();
-      }
-
-      // Create output filename with original file name as base
-      final String baseFileName = _audioFile.name?.split('.').first ?? 'extract';
-      final String outputFileName = '${baseFileName}_${_startPosition.toInt()}_${_endPosition.toInt()}.mp3';
-      final String outputPath = '${directory.path}/$outputFileName';
-
       // For Windows, use the system's FFmpeg directly
       if (Platform.isWindows) {
         try {

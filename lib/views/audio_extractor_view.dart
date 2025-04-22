@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter/return_code.dart';
+import 'package:path/path.dart' as path;
 import '../viewmodels/audio_extractor_viewmodel.dart';
 import '../models/extraction_result.dart';
 
@@ -32,6 +35,63 @@ class AudioExtractorView extends StatelessWidget {
       }
     } catch (e) {
       viewModel.setError('Error selecting file: $e');
+    }
+  }
+  
+  Future<void> _extractMP3(BuildContext context) async {
+    final viewModel = Provider.of<AudioExtractorViewModel>(context, listen: false);
+    
+    if (viewModel.audioFile.path == null) {
+      viewModel.setError('Please select an MP3 file first');
+      return;
+    }
+    
+    // Set processing state
+    viewModel.startProcessing();
+    
+    try {
+      // Create suggested filename
+      final String baseFileName = viewModel.audioFile.name?.split('.').first ?? 'extract';
+      final String suggestedFileName = '${baseFileName}_${viewModel.startPosition.toInt()}_${viewModel.endPosition.toInt()}.mp3';
+      
+      // Show file picker to choose save location
+      String? outputPath;
+      
+      if (Platform.isAndroid || Platform.isIOS) {
+        // For mobile, we need permission first
+        if (Platform.isAndroid) {
+          var status = await Permission.storage.request();
+          if (!status.isGranted) {
+            viewModel.setError('Storage permission denied');
+            return;
+          }
+        }
+        
+        // For mobile, let's use a simpler approach (can be enhanced with a proper file picker)
+        final Directory directory = Platform.isAndroid
+            ? (await getExternalStorageDirectory())!
+            : await getApplicationDocumentsDirectory();
+            
+        outputPath = '${directory.path}/$suggestedFileName';
+      } else {
+        // For desktop platforms, use FilePicker to select save location
+        String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+        
+        if (selectedDirectory == null) {
+          // User canceled the picker
+          viewModel.setError('Save location selection canceled');
+          return;
+        }
+        
+        outputPath = '$selectedDirectory${Platform.pathSeparator}$suggestedFileName';
+      }
+      
+      if (outputPath != null) {
+        // Proceed with extraction using the selected output path
+        await viewModel.extractMP3(outputPath);
+      }
+    } catch (e) {
+      viewModel.setError('Error selecting save location: $e');
     }
   }
   
@@ -186,7 +246,7 @@ class AudioExtractorView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: viewModel.extractionResult.isProcessing ? null : viewModel.extractMP3,
+                    onPressed: viewModel.extractionResult.isProcessing ? null : () => _extractMP3(context),
                     child: const Text('Extract MP3'),
                   ),
                 ],
