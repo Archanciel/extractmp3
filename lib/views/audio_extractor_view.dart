@@ -1,12 +1,57 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../viewmodels/audio_extractor_viewmodel.dart';
 import '../viewmodels/audio_player_viewmodel.dart';
 
-class AudioExtractorView extends StatelessWidget {
+// Custom text formatter for time input
+class TimeTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Allow deleting characters
+    if (oldValue.text.length > newValue.text.length) {
+      return newValue;
+    }
+    
+    // Simple validation - allow digits, colons, and dots
+    final RegExp validChars = RegExp(r'[0-9:.]');
+    String filtered = newValue.text.split('').where((char) => 
+      validChars.hasMatch(char)).join('');
+    
+    // If text was invalid, reject the change
+    if (filtered != newValue.text) {
+      return oldValue;
+    }
+    
+    return newValue;
+  }
+}
+
+class AudioExtractorView extends StatefulWidget {
   const AudioExtractorView({super.key});
+
+  @override
+  State<AudioExtractorView> createState() => _AudioExtractorViewState();
+}
+
+class _AudioExtractorViewState extends State<AudioExtractorView> {
+  // Controllers for the text fields - creating them once in the state
+  final TextEditingController _startController = TextEditingController();
+  final TextEditingController _endController = TextEditingController();
+  bool _startFieldInitialized = false;
+  bool _endFieldInitialized = false;
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickMP3File(BuildContext context) async {
     final viewModel = Provider.of<AudioExtractorViewModel>(
@@ -29,6 +74,12 @@ class AudioExtractorView extends StatelessWidget {
 
         // Update the ViewModel with the file info and actual duration
         viewModel.setAudioFile(path, name, duration);
+        
+        // Reset initialized flags to update the text fields with new values
+        setState(() {
+          _startFieldInitialized = false;
+          _endFieldInitialized = false;
+        });
       }
     } catch (e) {
       viewModel.setError('Error selecting file: $e');
@@ -50,11 +101,20 @@ class AudioExtractorView extends StatelessWidget {
     viewModel.startProcessing();
 
     try {
-      // Create suggested filename
+      // Create suggested filename with improved formatting
       final String baseFileName =
           viewModel.audioFile.name?.split('.').first ?? 'extract';
+      
+      // Format start and end positions for filename
+      final String startFormatted = formatTimePosition(viewModel.startPosition)
+          .replaceAll(':', '-')
+          .replaceAll('.', 'd');
+      final String endFormatted = formatTimePosition(viewModel.endPosition)
+          .replaceAll(':', '-')
+          .replaceAll('.', 'd');
+      
       final String suggestedFileName =
-          '${baseFileName}_${viewModel.startPosition.toInt()}_${viewModel.endPosition.toInt()}.mp3';
+          '${baseFileName}_${startFormatted}_${endFormatted}.mp3';
 
       // Show file picker to choose save location
       String? outputPath;
@@ -116,6 +176,106 @@ class AudioExtractorView extends StatelessWidget {
     }
   }
 
+  // Function to parse formatted time input and convert to seconds
+  double parseTimeInput(String input) {
+    // Handle empty input
+    if (input.isEmpty) {
+      return 0.0;
+    }
+    
+    // If the input is already a decimal number (no colons), try to parse it directly
+    if (!input.contains(':')) {
+      return double.tryParse(input) ?? 0.0;
+    }
+    
+    try {
+      double totalSeconds = 0.0;
+      
+      // Split by decimal point to handle tenths of seconds
+      List<String> mainAndFraction = input.split('.');
+      String mainPart = mainAndFraction[0];
+      double fractionPart = 0.0;
+      
+      // Parse the fractional part if it exists
+      if (mainAndFraction.length > 1 && mainAndFraction[1].isNotEmpty) {
+        // Handle case where user might input something like ".5"
+        fractionPart = double.tryParse('0.${mainAndFraction[1]}') ?? 0.0;
+      }
+      
+      // Split the main part by colon to get hours, minutes, seconds
+      List<String> parts = mainPart.split(':');
+      
+      if (parts.length == 3) {
+        // Format: hours:minutes:seconds
+        int hours = int.tryParse(parts[0]) ?? 0;
+        int minutes = int.tryParse(parts[1]) ?? 0;
+        int seconds = int.tryParse(parts[2]) ?? 0;
+        
+        totalSeconds = (hours * 3600) + (minutes * 60) + seconds + fractionPart;
+      } else if (parts.length == 2) {
+        // Format: minutes:seconds
+        int minutes = int.tryParse(parts[0]) ?? 0;
+        int seconds = int.tryParse(parts[1]) ?? 0;
+        
+        totalSeconds = (minutes * 60) + seconds + fractionPart;
+      } else if (parts.length == 1) {
+        // Just seconds
+        int seconds = int.tryParse(parts[0]) ?? 0;
+        totalSeconds = seconds + fractionPart;
+      }
+      
+      return totalSeconds;
+    } catch (e) {
+      // Return 0 if there's any parsing error
+      return 0.0;
+    }
+  }
+
+  // Safely update text controller with formatted time
+  void _safeUpdateController(TextEditingController controller, String newText) {
+    if (controller.text != newText) {
+      final currentSelection = controller.selection;
+      controller.text = newText;
+      
+      // Try to restore cursor position if possible
+      if (currentSelection.start <= newText.length) {
+        controller.selection = currentSelection;
+      }
+    }
+  }
+
+  // Process the input and update the view model
+  void _processTimeInput(TextEditingController controller, bool isStart, AudioExtractorViewModel viewModel) {
+    final newValueSeconds = parseTimeInput(controller.text);
+    
+    if (isStart) {
+      // For start position
+      if (newValueSeconds >= 0 && 
+          newValueSeconds < viewModel.endPosition &&
+          newValueSeconds <= viewModel.audioFile.duration) {
+        viewModel.startPosition = newValueSeconds;
+      }
+      
+      // Update the display with the model's value (which may have been validated)
+      _safeUpdateController(
+        controller,
+        formatTimePosition(viewModel.startPosition),
+      );
+    } else {
+      // For end position
+      if (newValueSeconds > viewModel.startPosition && 
+          newValueSeconds <= viewModel.audioFile.duration) {
+        viewModel.endPosition = newValueSeconds;
+      }
+      
+      // Update the display with the model's value (which may have been validated)
+      _safeUpdateController(
+        controller,
+        formatTimePosition(viewModel.endPosition),
+      );
+    }
+  }
+
   // Load and play extracted MP3 with error handling
   Future<void> _playExtractedFile(BuildContext context, String filePath) async {
     final playerViewModel = Provider.of<AudioPlayerViewModel>(
@@ -167,6 +327,17 @@ class AudioExtractorView extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Consumer2<AudioExtractorViewModel, AudioPlayerViewModel>(
           builder: (context, viewModel, playerViewModel, child) {
+            // Initialize controllers with current values, but only once
+            if (!_startFieldInitialized && viewModel.audioFile.isSelected) {
+              _startController.text = formatTimePosition(viewModel.startPosition);
+              _startFieldInitialized = true;
+            }
+            
+            if (!_endFieldInitialized && viewModel.audioFile.isSelected) {
+              _endController.text = formatTimePosition(viewModel.endPosition);
+              _endFieldInitialized = true;
+            }
+            
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -181,70 +352,72 @@ class AudioExtractorView extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'Duration: ${_formatDuration(viewModel.audioFile.duration)}',
+                    'Duration: ${formatTimePosition(viewModel.audioFile.duration)}',
                     style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 16),
+                  // Start position input field
                   Row(
                     children: [
                       const Text('Start Position: '),
                       SizedBox(
-                        width: 80,
-                        child: TextField(
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '0.0',
-                            suffixText: 's',
-                          ),
-                          controller: TextEditingController(
-                            text: viewModel.startPosition.toStringAsFixed(1),
-                          ),
-                          onChanged: (value) {
-                            final newValue = double.tryParse(value);
-                            if (newValue != null &&
-                                newValue >= 0 &&
-                                newValue < viewModel.endPosition) {
-                              viewModel.startPosition = newValue;
+                        width: 100,
+                        child: Focus(
+                          onFocusChange: (hasFocus) {
+                            if (!hasFocus) {
+                              // When focus is lost, parse the value and update the model
+                              _processTimeInput(_startController, true, viewModel);
                             }
                           },
+                          child: TextField(
+                            controller: _startController,
+                            inputFormatters: [
+                              TimeTextInputFormatter(),
+                            ],
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              hintText: '0:00.0',
+                              helperText: 'h:mm:ss.t',
+                              helperStyle: TextStyle(fontSize: 9),
+                            ),
+                            onSubmitted: (value) {
+                              _processTimeInput(_startController, true, viewModel);
+                            },
+                          ),
                         ),
                       ),
-                      const Spacer(),
-                      Text(_formatDuration(viewModel.startPosition)),
                     ],
                   ),
+                  // End position input field
                   Row(
                     children: [
-                      const Text('End Position: '),
+                      const Text('End Position:   '),
                       SizedBox(
-                        width: 80,
-                        child: TextField(
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '60.0',
-                            suffixText: 's',
-                          ),
-                          controller: TextEditingController(
-                            text: viewModel.endPosition.toStringAsFixed(1),
-                          ),
-                          onChanged: (value) {
-                            final newValue = double.tryParse(value);
-                            if (newValue != null &&
-                                newValue > viewModel.startPosition &&
-                                newValue <= viewModel.audioFile.duration) {
-                              viewModel.endPosition = newValue;
+                        width: 100,
+                        child: Focus(
+                          onFocusChange: (hasFocus) {
+                            if (!hasFocus) {
+                              // When focus is lost, parse the value and update the model
+                              _processTimeInput(_endController, false, viewModel);
                             }
                           },
+                          child: TextField(
+                            controller: _endController,
+                            inputFormatters: [
+                              TimeTextInputFormatter(),
+                            ],
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              hintText: '0:00.0',
+                              helperText: 'h:mm:ss.t',
+                              helperStyle: TextStyle(fontSize: 9),
+                            ),
+                            onSubmitted: (value) {
+                              _processTimeInput(_endController, false, viewModel);
+                            },
+                          ),
                         ),
                       ),
-                      const Spacer(),
-                      Text(_formatDuration(viewModel.endPosition)),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -252,7 +425,12 @@ class AudioExtractorView extends StatelessWidget {
                     onPressed:
                         viewModel.extractionResult.isProcessing
                             ? null
-                            : () => _extractMP3(context),
+                            : () {
+                                // Apply the current text field values before extraction
+                                _processTimeInput(_startController, true, viewModel);
+                                _processTimeInput(_endController, false, viewModel);
+                                _extractMP3(context);
+                              },
                     child: const Text('Extract MP3'),
                   ),
                 ],
@@ -356,16 +534,14 @@ class AudioExtractorView extends StatelessWidget {
             ),
           ),
           
-          // Time display
+          // Time display with improved formatting
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_formatDurationFromDuration(
-                    playerViewModel.position)),
-                Text(_formatDurationFromDuration(
-                    playerViewModel.duration)),
+                Text(formatDurationPosition(playerViewModel.position)),
+                Text(formatDurationPosition(playerViewModel.duration)),
               ],
             ),
           ),
@@ -395,22 +571,64 @@ class AudioExtractorView extends StatelessWidget {
       ],
     );
   }
-
-  String _formatDuration(double seconds) {
+  
+  // Improved format function for displaying seconds as time
+  String formatTimePosition(double seconds) {
     final int hours = seconds ~/ 3600;
     final int minutes = (seconds % 3600) ~/ 60;
     final int secs = seconds.toInt() % 60;
-    final String hoursStr = hours > 0 ? '$hours:' : '';
-    final String minutesStr =
-        minutes < 10 && hours > 0 ? '0$minutes:' : '$minutes:';
-    final String secondsStr = secs < 10 ? '0$secs' : '$secs';
-    return '$hoursStr$minutesStr$secondsStr';
+    final int tenthsOfSeconds = ((seconds - seconds.toInt()) * 10).round();
+    
+    // Format hours (only show if there are hours)
+    String result = '';
+    if (hours > 0) {
+      result += '$hours:';
+    }
+    
+    // Format minutes (if hours are shown, ensure minutes are padded with zeros)
+    if (hours > 0) {
+      result += '${minutes.toString().padLeft(2, '0')}:';
+    } else {
+      result += '$minutes:';
+    }
+    
+    // Format seconds (always pad with zeros)
+    result += '${secs.toString().padLeft(2, '0')}';
+    
+    // Add tenths of seconds
+    result += '.${tenthsOfSeconds.toString()}';
+    
+    return result;
   }
-  
-  String _formatDurationFromDuration(Duration duration) {
-    final int minutes = duration.inMinutes;
+
+  // Format a Duration object with the same style
+  String formatDurationPosition(Duration duration) {
+    final int hours = duration.inHours;
+    final int minutes = duration.inMinutes % 60;
     final int seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+    final int milliseconds = duration.inMilliseconds % 1000;
+    final int tenthsOfSeconds = (milliseconds / 100).round();
+    
+    // Format hours (only show if there are hours)
+    String result = '';
+    if (hours > 0) {
+      result += '$hours:';
+    }
+    
+    // Format minutes (if hours are shown, ensure minutes are padded with zeros)
+    if (hours > 0) {
+      result += '${minutes.toString().padLeft(2, '0')}:';
+    } else {
+      result += '$minutes:';
+    }
+    
+    // Format seconds (always pad with zeros)
+    result += '${seconds.toString().padLeft(2, '0')}';
+    
+    // Add tenths of seconds
+    result += '.${tenthsOfSeconds.toString()}';
+    
+    return result;
   }
   
   String _getFileName(String path) {
