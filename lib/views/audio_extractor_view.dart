@@ -172,20 +172,6 @@ class AudioExtractorView extends StatelessWidget {
                       Text(_formatDuration(viewModel.startPosition)),
                     ],
                   ),
-                  Slider(
-                    value: viewModel.startPosition,
-                    min: 0,
-                    max:
-                        viewModel.endPosition > 0
-                            ? viewModel.endPosition
-                            : viewModel.audioFile.duration,
-                    divisions:
-                        (viewModel.audioFile.duration * 10)
-                            .toInt(), // Divisions for tenths of seconds
-                    onChanged: (value) {
-                      viewModel.startPosition = value;
-                    },
-                  ),
                   Row(
                     children: [
                       const Text('End Position: '),
@@ -216,17 +202,6 @@ class AudioExtractorView extends StatelessWidget {
                       const Spacer(),
                       Text(_formatDuration(viewModel.endPosition)),
                     ],
-                  ),
-                  Slider(
-                    value: viewModel.endPosition,
-                    min: viewModel.startPosition,
-                    max: viewModel.audioFile.duration,
-                    divisions:
-                        (viewModel.audioFile.duration * 10)
-                            .toInt(), // Divisions for tenths of seconds
-                    onChanged: (value) {
-                      viewModel.endPosition = value;
-                    },
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
