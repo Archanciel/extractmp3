@@ -1,11 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter/return_code.dart';
 import '../viewmodels/audio_extractor_viewmodel.dart';
 
 class AudioExtractorView extends StatelessWidget {
@@ -62,42 +58,19 @@ class AudioExtractorView extends StatelessWidget {
       // Show file picker to choose save location
       String? outputPath;
 
-      if (Platform.isAndroid || Platform.isIOS) {
-        // For mobile, we need permission first
-        if (Platform.isAndroid) {
-          var status = await Permission.storage.request();
-          if (!status.isGranted) {
-            viewModel.setError('Storage permission denied');
-            return;
-          }
-        }
+      // For desktop platforms, use FilePicker to select save location
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
-        // For mobile, let's use a simpler approach (can be enhanced with a proper file picker)
-        final Directory directory =
-            Platform.isAndroid
-                ? (await getExternalStorageDirectory())!
-                : await getApplicationDocumentsDirectory();
-
-        outputPath = '${directory.path}/$suggestedFileName';
-
-        // Proceed with extraction using the selected output path
-        await viewModel.extractMP3(outputPath);
-      } else {
-        // For desktop platforms, use FilePicker to select save location
-        String? selectedDirectory =
-            await FilePicker.platform.getDirectoryPath();
-
-        if (selectedDirectory == null) {
-          // User canceled the picker
-          viewModel.setError('Save location selection canceled');
-          return;
-        }
-
-        outputPath =
-            '$selectedDirectory${Platform.pathSeparator}$suggestedFileName';
-            
-        await viewModel.extractMP3(outputPath);
+      if (selectedDirectory == null) {
+        // User canceled the picker
+        viewModel.setError('Save location selection canceled');
+        return;
       }
+
+      outputPath =
+          '$selectedDirectory${Platform.pathSeparator}$suggestedFileName';
+
+      await viewModel.extractMP3(outputPath);
     } catch (e) {
       viewModel.setError('Error selecting save location: $e');
     }
@@ -105,55 +78,37 @@ class AudioExtractorView extends StatelessWidget {
 
   Future<double> _getMP3Duration(String filePath) async {
     try {
-      if (Platform.isWindows) {
-        // For Windows, use direct FFmpeg command
-        final List<String> arguments = [
-          '-i',
-          filePath,
-          '-v',
-          'quiet',
-          '-show_entries',
-          'format=duration',
-          '-of',
-          'default=noprint_wrappers=1:nokey=1',
-          '-sexagesimal',
-        ];
+      // For Windows, use direct FFmpeg command
+      final List<String> arguments = [
+        '-i',
+        filePath,
+        '-v',
+        'quiet',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        '-sexagesimal',
+      ];
 
-        final ProcessResult result = await Process.run('ffprobe', arguments);
-        if (result.exitCode == 0) {
-          // Parse the duration string (HH:MM:SS.MS format)
-          String durationStr = (result.stdout as String).trim();
+      final ProcessResult result = await Process.run('ffprobe', arguments);
+      if (result.exitCode == 0) {
+        // Parse the duration string (HH:MM:SS.MS format)
+        String durationStr = (result.stdout as String).trim();
 
-          // Simple parsing for HH:MM:SS.MS format
-          List<String> parts = durationStr.split(':');
-          if (parts.length == 3) {
-            int hours = int.parse(parts[0]);
-            int minutes = int.parse(parts[1]);
-            double seconds = double.parse(parts[2]);
-            return (hours * 3600) + (minutes * 60) + seconds;
-          }
-
-          // Fallback - try direct parsing as seconds
-          return double.tryParse(durationStr) ?? 60.0;
+        // Simple parsing for HH:MM:SS.MS format
+        List<String> parts = durationStr.split(':');
+        if (parts.length == 3) {
+          int hours = int.parse(parts[0]);
+          int minutes = int.parse(parts[1]);
+          double seconds = double.parse(parts[2]);
+          return (hours * 3600) + (minutes * 60) + seconds;
         }
-        return 60.0; // Default fallback
-      } else {
-        // For mobile, use FFmpegKit
-        final session = await FFmpegKit.execute(
-          '-i "$filePath" -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1',
-        );
 
-        final returnCode = await session.getReturnCode();
-
-        if (ReturnCode.isSuccess(returnCode)) {
-          final output = await session.getOutput();
-          if (output != null && output.isNotEmpty) {
-            // Try to parse the output as a double (duration in seconds)
-            return double.tryParse(output.trim()) ?? 60.0;
-          }
-        }
-        return 60.0; // Default fallback
+        // Fallback - try direct parsing as seconds
+        return double.tryParse(durationStr) ?? 60.0;
       }
+      return 60.0; // Default fallback
     } catch (e) {
       debugPrint('Error getting duration: $e');
       return 60.0; // Default duration if we can't determine it
