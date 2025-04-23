@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_size/window_size.dart';
 import 'views/audio_extractor_view.dart';
-import 'viewmodels/audio_extractor_viewmodel.dart';
-import 'viewmodels/audio_player_viewmodel.dart';
+import '../viewmodels/audio_extractor_vm.dart';
+import 'viewmodels/audio_player_vm.dart';
 
 Future<void> main() async {
   // Ensure Flutter is initialized
@@ -30,7 +30,7 @@ Future<void> setWindowsAppSizeAndPosition({bool isTest = true}) async {
 
       // Définissez la largeur et la hauteur de votre fenêtre
       double windowWidth = (isTest) ? 900 : 730;
-      const double windowHeight = 1500;
+      const double windowHeight = 1550;
 
       // Calculez la position X pour placer la fenêtre sur le côté droit de l'écran
       final double posX = screenRect.right - windowWidth + 10;
@@ -59,9 +59,9 @@ class MyApp extends StatelessWidget {
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider(
-            create: (context) => AudioExtractorViewModel(),
+            create: (context) => AudioExtractorVM(),
           ),
-          ChangeNotifierProvider(create: (context) => AudioPlayerViewModel()),
+          ChangeNotifierProvider(create: (context) => AudioPlayerVM()),
         ],
         child: const AudioExtractorView(),
       ),

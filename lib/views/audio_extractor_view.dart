@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import '../viewmodels/audio_extractor_viewmodel.dart';
-import '../viewmodels/audio_player_viewmodel.dart';
+import '../viewmodels/audio_extractor_vm.dart';
+import '../viewmodels/audio_player_vm.dart';
 
 // Custom text formatter for time input
 class TimeTextInputFormatter extends TextInputFormatter {
@@ -55,12 +55,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     super.dispose();
   }
 
-  Future<void> _pickMP3File(BuildContext context) async {
-    final viewModel = Provider.of<AudioExtractorViewModel>(
-      context,
-      listen: false,
-    );
-
+  Future<void> _pickMP3File(
+    BuildContext context,
+    AudioExtractorVM audioExtractorVM,
+  ) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.audio,
@@ -75,7 +73,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         double duration = await _getMP3Duration(path);
 
         // Update the ViewModel with the file info and actual duration
-        viewModel.setAudioFile(path, name, duration);
+        audioExtractorVM.setAudioFile(path, name, duration);
 
         // Reset initialized flags to update the text fields with new values
         setState(() {
@@ -84,39 +82,39 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         });
       }
     } catch (e) {
-      viewModel.setError('Error selecting file: $e');
+      audioExtractorVM.setError('Error selecting file: $e');
     }
   }
 
   Future<void> _extractMP3(BuildContext context) async {
-    final viewModel = Provider.of<AudioExtractorViewModel>(
+    final audioExtractorVM = Provider.of<AudioExtractorVM>(
       context,
       listen: false,
     );
 
-    if (viewModel.audioFile.path == null) {
-      viewModel.setError('Please select an MP3 file first');
+    if (audioExtractorVM.audioFile.path == null) {
+      audioExtractorVM.setError('Please select an MP3 file first');
       return;
     }
 
     // Set processing state
-    viewModel.startProcessing();
+    audioExtractorVM.startProcessing();
 
     try {
       // Create suggested filename with improved formatting
       final String baseFileName =
-          viewModel.audioFile.name?.split('.').first ?? 'extract';
+          audioExtractorVM.audioFile.name?.split('.').first ?? 'extract';
 
       // Format start and end positions for filename
       final String startFormatted = formatTimePosition(
-        viewModel.startPosition,
-      ).replaceAll(':', '-').replaceAll('.', 'd');
+        audioExtractorVM.startPosition,
+      ).replaceAll(':', '-');
       final String endFormatted = formatTimePosition(
-        viewModel.endPosition,
-      ).replaceAll(':', '-').replaceAll('.', 'd');
+        audioExtractorVM.endPosition,
+      ).replaceAll(':', '-');
 
       final String suggestedFileName =
-          '${baseFileName}_${startFormatted}_$endFormatted.mp3';
+          '${baseFileName} from ${startFormatted} to $endFormatted.mp3';
 
       // Show file picker to choose save location
       String? outputPath;
@@ -126,16 +124,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
       if (selectedDirectory == null) {
         // User canceled the picker
-        viewModel.setError('Save location selection canceled');
+        audioExtractorVM.setError('Save location selection canceled');
         return;
       }
 
       outputPath =
           '$selectedDirectory${Platform.pathSeparator}$suggestedFileName';
 
-      await viewModel.extractMP3(outputPath);
+      await audioExtractorVM.extractMP3(outputPath);
     } catch (e) {
-      viewModel.setError('Error selecting save location: $e');
+      audioExtractorVM.setError('Error selecting save location: $e');
     }
   }
 
@@ -250,54 +248,51 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   void _processTimeInput(
     TextEditingController controller,
     bool isStart,
-    AudioExtractorViewModel viewModel,
+    AudioExtractorVM audioExtractorVM,
   ) {
     final newValueSeconds = parseTimeInput(controller.text);
 
     if (isStart) {
       // For start position
       if (newValueSeconds >= 0 &&
-          newValueSeconds < viewModel.endPosition &&
-          newValueSeconds <= viewModel.audioFile.duration) {
-        viewModel.startPosition = newValueSeconds;
+          newValueSeconds < audioExtractorVM.endPosition &&
+          newValueSeconds <= audioExtractorVM.audioFile.duration) {
+        audioExtractorVM.startPosition = newValueSeconds;
       }
 
       // Update the display with the model's value (which may have been validated)
       _safeUpdateController(
         controller,
-        formatTimePosition(viewModel.startPosition),
+        formatTimePosition(audioExtractorVM.startPosition),
       );
     } else {
       // For end position
-      if (newValueSeconds > viewModel.startPosition &&
-          newValueSeconds <= viewModel.audioFile.duration) {
-        viewModel.endPosition = newValueSeconds;
+      if (newValueSeconds > audioExtractorVM.startPosition &&
+          newValueSeconds <= audioExtractorVM.audioFile.duration) {
+        audioExtractorVM.endPosition = newValueSeconds;
       }
 
       // Update the display with the model's value (which may have been validated)
       _safeUpdateController(
         controller,
-        formatTimePosition(viewModel.endPosition),
+        formatTimePosition(audioExtractorVM.endPosition),
       );
     }
   }
 
   // Load and play extracted MP3 with error handling
   Future<void> _playExtractedFile(BuildContext context, String filePath) async {
-    final playerViewModel = Provider.of<AudioPlayerViewModel>(
-      context,
-      listen: false,
-    );
+    final audioPlayerVM = Provider.of<AudioPlayerVM>(context, listen: false);
 
     // Reset any previous errors
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     try {
-      await playerViewModel.loadFile(filePath);
-      if (!playerViewModel.hasError) {
-        await playerViewModel.togglePlay();
+      await audioPlayerVM.loadFile(filePath);
+      if (!audioPlayerVM.hasError) {
+        await audioPlayerVM.togglePlay();
       } else {
-        _showErrorSnackBar(context, playerViewModel.errorMessage);
+        _showErrorSnackBar(context, audioPlayerVM.errorMessage);
       }
     } catch (e) {
       _showErrorSnackBar(context, 'Error playing file: $e');
@@ -314,11 +309,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           label: 'Repair',
           textColor: Colors.white,
           onPressed: () {
-            final playerViewModel = Provider.of<AudioPlayerViewModel>(
+            final audioPlayerVM = Provider.of<AudioPlayerVM>(
               context,
               listen: false,
             );
-            playerViewModel.tryRepairPlayer();
+            audioPlayerVM.tryRepairPlayer();
           },
         ),
       ),
@@ -331,18 +326,22 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       appBar: AppBar(title: const Text('MP3 Extractor')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Consumer2<AudioExtractorViewModel, AudioPlayerViewModel>(
-          builder: (context, viewModel, playerViewModel, child) {
+        child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
+          builder: (context, audioExtractorVM, audioPlayerVM, child) {
             // Initialize controllers with current values, but only once
-            if (!_startFieldInitialized && viewModel.audioFile.isSelected) {
+            if (!_startFieldInitialized &&
+                audioExtractorVM.audioFile.isSelected) {
               _startController.text = formatTimePosition(
-                viewModel.startPosition,
+                audioExtractorVM.startPosition,
               );
               _startFieldInitialized = true;
             }
 
-            if (!_endFieldInitialized && viewModel.audioFile.isSelected) {
-              _endController.text = formatTimePosition(viewModel.endPosition);
+            if (!_endFieldInitialized &&
+                audioExtractorVM.audioFile.isSelected) {
+              _endController.text = formatTimePosition(
+                audioExtractorVM.endPosition,
+              );
               _endFieldInitialized = true;
             }
 
@@ -350,17 +349,17 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ElevatedButton(
-                  onPressed: () => _pickMP3File(context),
+                  onPressed: () => _pickMP3File(context, audioExtractorVM),
                   child: const Text('Select MP3 File'),
                 ),
                 const SizedBox(height: 16),
-                if (viewModel.audioFile.isSelected) ...[
+                if (audioExtractorVM.audioFile.isSelected) ...[
                   Text(
-                    'Selected File: ${viewModel.audioFile.name}',
+                    'Selected File: ${audioExtractorVM.audioFile.name}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'Duration: ${formatTimePosition(viewModel.audioFile.duration)}',
+                    'Duration: ${formatTimePosition(audioExtractorVM.audioFile.duration)}',
                     style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 16),
@@ -377,7 +376,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                               _processTimeInput(
                                 _startController,
                                 true,
-                                viewModel,
+                                audioExtractorVM,
                               );
                             }
                           },
@@ -395,17 +394,19 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                               // Don't reformat during typing, but do update the model
                               double newValueSeconds = parseTimeInput(value);
                               if (newValueSeconds >= 0 &&
-                                  newValueSeconds < viewModel.endPosition &&
+                                  newValueSeconds <
+                                      audioExtractorVM.endPosition &&
                                   newValueSeconds <=
-                                      viewModel.audioFile.duration) {
-                                viewModel.startPosition = newValueSeconds;
+                                      audioExtractorVM.audioFile.duration) {
+                                audioExtractorVM.startPosition =
+                                    newValueSeconds;
                               }
                             },
                             onSubmitted: (value) {
                               _processTimeInput(
                                 _startController,
                                 true,
-                                viewModel,
+                                audioExtractorVM,
                               );
                             },
                           ),
@@ -426,7 +427,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                               _processTimeInput(
                                 _endController,
                                 false,
-                                viewModel,
+                                audioExtractorVM,
                               );
                             }
                           },
@@ -443,17 +444,18 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                             onChanged: (value) {
                               // Don't reformat during typing, but do update the model
                               double newValueSeconds = parseTimeInput(value);
-                              if (newValueSeconds > viewModel.startPosition &&
+                              if (newValueSeconds >
+                                      audioExtractorVM.startPosition &&
                                   newValueSeconds <=
-                                      viewModel.audioFile.duration) {
-                                viewModel.endPosition = newValueSeconds;
+                                      audioExtractorVM.audioFile.duration) {
+                                audioExtractorVM.endPosition = newValueSeconds;
                               }
                             },
                             onSubmitted: (value) {
                               _processTimeInput(
                                 _endController,
                                 false,
-                                viewModel,
+                                audioExtractorVM,
                               );
                             },
                           ),
@@ -464,28 +466,29 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed:
-                        viewModel.extractionResult.isProcessing
+                        audioExtractorVM.extractionResult.isProcessing
                             ? null
                             : () {
-                              playerViewModel.isLoaded = false;
-                              
+                              audioPlayerVM.isLoaded = false;
+
                               // Parse the current text field values once more before extraction
                               final startSeconds = parseTimeInput(
                                 _startController.text,
                               );
                               if (startSeconds >= 0 &&
-                                  startSeconds < viewModel.endPosition &&
+                                  startSeconds < audioExtractorVM.endPosition &&
                                   startSeconds <=
-                                      viewModel.audioFile.duration) {
-                                viewModel.startPosition = startSeconds;
+                                      audioExtractorVM.audioFile.duration) {
+                                audioExtractorVM.startPosition = startSeconds;
                               }
 
                               final endSeconds = parseTimeInput(
                                 _endController.text,
                               );
-                              if (endSeconds > viewModel.startPosition &&
-                                  endSeconds <= viewModel.audioFile.duration) {
-                                viewModel.endPosition = endSeconds;
+                              if (endSeconds > audioExtractorVM.startPosition &&
+                                  endSeconds <=
+                                      audioExtractorVM.audioFile.duration) {
+                                audioExtractorVM.endPosition = endSeconds;
                               }
 
                               _extractMP3(context);
@@ -494,18 +497,18 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (viewModel.extractionResult.isProcessing)
+                if (audioExtractorVM.extractionResult.isProcessing)
                   const Center(child: CircularProgressIndicator()),
-                if (viewModel.extractionResult.hasMessage)
+                if (audioExtractorVM.extractionResult.hasMessage)
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0),
                     child: Text(
-                      viewModel.extractionResult.message,
+                      audioExtractorVM.extractionResult.message,
                       style: TextStyle(
                         color:
-                            viewModel.extractionResult.isError
+                            audioExtractorVM.extractionResult.isError
                                 ? Colors.red
-                                : viewModel.extractionResult.isSuccess
+                                : audioExtractorVM.extractionResult.isSuccess
                                 ? Colors.green
                                 : Colors.black,
                       ),
@@ -513,8 +516,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   ),
 
                 // Audio Player Section - Only visible when extraction is successful
-                if (viewModel.extractionResult.isSuccess &&
-                    viewModel.extractionResult.outputPath != null) ...[
+                if (audioExtractorVM.extractionResult.isSuccess &&
+                    audioExtractorVM.extractionResult.outputPath != null) ...[
                   const Divider(height: 32),
                   const Text(
                     'Audio Player',
@@ -525,8 +528,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   // Show player UI
                   _buildAudioPlayerControls(
                     context,
-                    viewModel,
-                    playerViewModel,
+                    audioExtractorVM,
+                    audioPlayerVM,
                   ),
                 ],
               ],
@@ -540,8 +543,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   // Separated audio player controls for better organization
   Widget _buildAudioPlayerControls(
     BuildContext context,
-    AudioExtractorViewModel viewModel,
-    AudioPlayerViewModel playerViewModel,
+    AudioExtractorVM audioExtractorVM,
+    AudioPlayerVM audioPlayerVM,
   ) {
     return Column(
       children: [
@@ -551,25 +554,25 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           children: [
             ElevatedButton.icon(
               onPressed:
-                  playerViewModel.hasError
-                      ? () => playerViewModel.tryRepairPlayer()
-                      : playerViewModel.isLoaded
-                      ? () => playerViewModel.togglePlay()
+                  audioPlayerVM.hasError
+                      ? () => audioPlayerVM.tryRepairPlayer()
+                      : audioPlayerVM.isLoaded
+                      ? () => audioPlayerVM.togglePlay()
                       : () => _playExtractedFile(
                         context,
-                        viewModel.extractionResult.outputPath!,
+                        audioExtractorVM.extractionResult.outputPath!,
                       ),
               icon: Icon(
-                playerViewModel.hasError
+                audioPlayerVM.hasError
                     ? Icons.refresh
-                    : playerViewModel.isPlaying
+                    : audioPlayerVM.isPlaying
                     ? Icons.pause
                     : Icons.play_arrow,
               ),
               label: Text(
-                playerViewModel.hasError
+                audioPlayerVM.hasError
                     ? 'Retry'
-                    : playerViewModel.isPlaying
+                    : audioPlayerVM.isPlaying
                     ? 'Pause'
                     : 'Play',
               ),
@@ -578,7 +581,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         ),
 
         // Player progress bar (only visible when file is loaded and no errors)
-        if (playerViewModel.isLoaded && !playerViewModel.hasError) ...[
+        if (audioPlayerVM.isLoaded && !audioPlayerVM.hasError) ...[
           const SizedBox(height: 8),
           SliderTheme(
             data: SliderThemeData(
@@ -586,9 +589,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
             ),
             child: Slider(
-              value: playerViewModel.progressPercent.clamp(0.0, 1.0),
+              value: audioPlayerVM.progressPercent.clamp(0.0, 1.0),
               onChanged: (value) {
-                playerViewModel.seekByPercentage(value);
+                audioPlayerVM.seekByPercentage(value);
               },
             ),
           ),
@@ -599,8 +602,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(formatDurationPosition(playerViewModel.position)),
-                Text(formatDurationPosition(playerViewModel.duration)),
+                Text(formatDurationPosition(audioPlayerVM.position)),
+                Text(formatDurationPosition(audioPlayerVM.duration)),
               ],
             ),
           ),
@@ -608,18 +611,18 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           // File name display
           const SizedBox(height: 8),
           Text(
-            'Playing: ${_getFileName(viewModel.extractionResult.outputPath!)}',
+            'Playing: ${_getFileName(audioExtractorVM.extractionResult.outputPath!)}',
             style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
             textAlign: TextAlign.center,
           ),
         ],
 
         // Error message (if any)
-        if (playerViewModel.hasError)
+        if (audioPlayerVM.hasError)
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Text(
-              playerViewModel.errorMessage,
+              audioPlayerVM.errorMessage,
               style: const TextStyle(color: Colors.red, fontSize: 12),
               textAlign: TextAlign.center,
             ),

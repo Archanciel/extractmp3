@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/audio_file.dart';
 import '../models/extraction_result.dart';
 
-class AudioExtractorViewModel extends ChangeNotifier {
+class AudioExtractorVM extends ChangeNotifier {
   AudioFile _audioFile = AudioFile();
   double _startPosition = 0.0;
   double _endPosition = 60.0;

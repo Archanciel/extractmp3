@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-class AudioPlayerViewModel extends ChangeNotifier {
+class AudioPlayerVM extends ChangeNotifier {
   // The audio player instance
   AudioPlayer? _player;
   
@@ -41,7 +41,7 @@ class AudioPlayerViewModel extends ChangeNotifier {
       ? _position.inMilliseconds / _duration.inMilliseconds 
       : 0.0;
   
-  AudioPlayerViewModel() {
+  AudioPlayerVM() {
     _initializePlayer();
   }
   
