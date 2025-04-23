@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class AudioPlayerViewModel extends ChangeNotifier {
   // The audio player instance
@@ -10,7 +10,13 @@ class AudioPlayerViewModel extends ChangeNotifier {
   
   // Current playback state
   bool _isPlaying = false;
+  
   bool _isLoaded = false;
+  set isLoaded(bool value) {
+    _isLoaded = value;
+    notifyListeners();
+  }
+
   String? _currentFilePath;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
@@ -58,40 +64,37 @@ class AudioPlayerViewModel extends ChangeNotifier {
     
     try {
       // Listen to player state changes
-      _subscriptions.add(_player!.playerStateStream.listen((state) {
-        _isPlaying = state.playing;
+      _subscriptions.add(_player!.onPlayerStateChanged.listen((state) {
+        _isPlaying = state == PlayerState.playing;
         notifyListeners();
       }, onError: (e) {
         debugPrint('Player state error: $e');
       }));
       
       // Listen to duration changes
-      _subscriptions.add(_player!.durationStream.listen((newDuration) {
-        if (newDuration != null) {
-          _duration = newDuration;
-          notifyListeners();
-        }
+      _subscriptions.add(_player!.onDurationChanged.listen((newDuration) {
+        _duration = newDuration;
+        notifyListeners();
       }, onError: (e) {
         debugPrint('Duration stream error: $e');
       }));
       
       // Listen to position changes
-      _subscriptions.add(_player!.positionStream.listen((newPosition) {
+      _subscriptions.add(_player!.onPositionChanged.listen((newPosition) {
         _position = newPosition;
         notifyListeners();
       }, onError: (e) {
         debugPrint('Position stream error: $e');
       }));
       
-      // Listen for processing state to catch completion
-      _subscriptions.add(_player!.processingStateStream.listen((state) {
-        if (state == ProcessingState.completed) {
-          // Reset position to beginning
-          _player?.seek(Duration.zero);
-          _player?.pause();
-        }
+      // Listen for completion
+      _subscriptions.add(_player!.onPlayerComplete.listen((_) {
+        // Reset position to beginning
+        _player?.seek(Duration.zero);
+        _isPlaying = false;
+        notifyListeners();
       }, onError: (e) {
-        debugPrint('Processing state error: $e');
+        debugPrint('Player complete error: $e');
       }));
     } catch (e) {
       debugPrint('Error setting up listeners: $e');
@@ -129,7 +132,8 @@ class AudioPlayerViewModel extends ChangeNotifier {
         
         // Wrap in a try-catch to handle potential PlatformExceptions
         try {
-          await _player!.setFilePath(filePath);
+          // For audioplayers, we use setSource with a DeviceFileSource
+          await _player!.setSource(DeviceFileSource(filePath));
           _isLoaded = true;
           _currentFilePath = filePath;
           notifyListeners();
@@ -138,7 +142,7 @@ class AudioPlayerViewModel extends ChangeNotifier {
           // Try one more time with a recreated player
           _initializePlayer();
           await Future.delayed(const Duration(milliseconds: 500));
-          await _player!.setFilePath(filePath);
+          await _player!.setSource(DeviceFileSource(filePath));
           _isLoaded = true;
           _currentFilePath = filePath;
           notifyListeners();
@@ -159,11 +163,14 @@ class AudioPlayerViewModel extends ChangeNotifier {
       if (_isPlaying) {
         await _player!.pause();
       } else {
-        // For Windows, add a safety check before playing
-        if (Platform.isWindows && _player!.processingState == ProcessingState.idle) {
-          await loadFile(_currentFilePath!);
+        // For Windows, add a safety check
+        if (Platform.isWindows && _currentFilePath != null && !_isPlaying) {
+          // Check if we need to reload the file
+          if (_position == Duration.zero && _duration == Duration.zero) {
+            await loadFile(_currentFilePath!);
+          }
         }
-        await _player!.play();
+        await _player!.resume();
       }
     } catch (e) {
       _setError('Error toggling playback: $e');

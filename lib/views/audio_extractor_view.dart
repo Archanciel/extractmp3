@@ -116,7 +116,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       ).replaceAll(':', '-').replaceAll('.', 'd');
 
       final String suggestedFileName =
-          '${baseFileName}_${startFormatted}_${endFormatted}.mp3';
+          '${baseFileName}_${startFormatted}_$endFormatted.mp3';
 
       // Show file picker to choose save location
       String? outputPath;
@@ -467,6 +467,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         viewModel.extractionResult.isProcessing
                             ? null
                             : () {
+                              playerViewModel.isLoaded = false;
+                              
                               // Parse the current text field values once more before extraction
                               final startSeconds = parseTimeInput(
                                 _startController.text,
@@ -647,7 +649,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
 
     // Format seconds (always pad with zeros)
-    result += '${secs.toString().padLeft(2, '0')}';
+    result += secs.toString().padLeft(2, '0');
 
     // Add tenths of seconds
     result += '.${tenthsOfSeconds.toString()}';
@@ -677,7 +679,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
 
     // Format seconds (always pad with zeros)
-    result += '${seconds.toString().padLeft(2, '0')}';
+    result += seconds.toString().padLeft(2, '0');
 
     // Add tenths of seconds
     result += '.${tenthsOfSeconds.toString()}';

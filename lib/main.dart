@@ -11,9 +11,7 @@ Future<void> main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Just Audio will automatically register its Windows implementation
-  // We don't need explicit registration with newer versions
-
+  // Set up window size and position for desktop platforms
   await setWindowsAppSizeAndPosition();
 
   runApp(const MyApp());
