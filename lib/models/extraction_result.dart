@@ -30,7 +30,7 @@ class ExtractionResult {
   factory ExtractionResult.success(String outputPath) {
     return ExtractionResult(
       status: ExtractionStatus.success,
-      message: 'Success! Extracted MP3 saved to: $outputPath',
+      message: 'Extracted MP3 saved to:\n\n$outputPath',
       outputPath: outputPath,
     );
   }

@@ -12,14 +12,14 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set up window size and position for desktop platforms
-  await setWindowsAppSizeAndPosition();
+  await _setWindowsAppSizeAndPosition(isTest: false);
 
   runApp(const MyApp());
 }
 
 /// If app runs on Windows, Linux or MacOS, set the app size
 /// and position.
-Future<void> setWindowsAppSizeAndPosition({bool isTest = true}) async {
+Future<void> _setWindowsAppSizeAndPosition({bool isTest = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -58,9 +58,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: MultiProvider(
         providers: [
-          ChangeNotifierProvider(
-            create: (context) => AudioExtractorVM(),
-          ),
+          ChangeNotifierProvider(create: (context) => AudioExtractorVM()),
           ChangeNotifierProvider(create: (context) => AudioPlayerVM()),
         ],
         child: const AudioExtractorView(),

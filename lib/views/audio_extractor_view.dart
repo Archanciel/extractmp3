@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import '../constants.dart';
 import '../viewmodels/audio_extractor_vm.dart';
 import '../viewmodels/audio_player_vm.dart';
 
@@ -297,7 +298,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         _showErrorSnackBar(context, audioPlayerVM.errorMessage);
       }
     } catch (e) {
-
       if (!context.mounted) return;
 
       _showErrorSnackBar(context, 'Error playing file: $e');
@@ -328,7 +328,17 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('MP3 Extractor')),
+      appBar: AppBar(
+        title: const Text('MP3 Extractor'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.settings),
+            onPressed: () => _showSettingsDialog(context),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
@@ -514,8 +524,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                             audioExtractorVM.extractionResult.isError
                                 ? Colors.red
                                 : audioExtractorVM.extractionResult.isSuccess
-                                ? Colors.green
+                                ? Colors.green[700]
                                 : Colors.black,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
@@ -697,5 +709,21 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
   String _getFileName(String path) {
     return path.split(Platform.pathSeparator).last;
+  }
+
+  void _showSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('MP3 Extractor $kApplicationVersion'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Fermer'),
+              ),
+            ],
+          ),
+    );
   }
 }
