@@ -114,7 +114,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       ).replaceAll(':', '-');
 
       final String suggestedFileName =
-          '${baseFileName} from ${startFormatted} to $endFormatted.mp3';
+          '$baseFileName from $startFormatted to $endFormatted.mp3';
 
       // Show file picker to choose save location
       String? outputPath;
@@ -292,9 +292,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       if (!audioPlayerVM.hasError) {
         await audioPlayerVM.togglePlay();
       } else {
+        if (!context.mounted) return;
+
         _showErrorSnackBar(context, audioPlayerVM.errorMessage);
       }
     } catch (e) {
+
+      if (!context.mounted) return;
+
       _showErrorSnackBar(context, 'Error playing file: $e');
     }
   }
