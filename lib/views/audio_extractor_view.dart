@@ -62,10 +62,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   ) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
+        type: FileType.custom, // Changed to custom
         allowedExtensions: ['mp3'],
       );
-
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
         final name = result.files.single.name;
