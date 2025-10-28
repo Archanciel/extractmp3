@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:logger/logger.dart';
 
 class AudioExtractorService {
@@ -22,26 +21,50 @@ class AudioExtractorService {
         return 60.0; // Default fallback
       }
     } else {
-      // Use audioplayers for desktop (Windows, macOS, Linux)
-      try {
-        final player = AudioPlayer();
-        await player.setSource(DeviceFileSource(filePath));
-        
-        // Wait a bit for duration to be available
-        await Future.delayed(const Duration(milliseconds: 500));
-        
-        final duration = await player.getDuration();
-        final durationSeconds = duration?.inMilliseconds ?? 60000;
-        
-        await player.dispose();
-        
-        return durationSeconds / 1000.0;
-      } catch (e) {
-        logger.i('Error getting duration on desktop: $e');
-        return 60.0; // Default fallback
-      }
+      // Use FFmpeg for desktop
+      return await getMP3Duration(filePath);
     }
   }
+  
+  static Future<double> getMP3Duration(String filePath) async {
+    try {
+      // For Windows, use direct FFmpeg command
+      final List<String> arguments = [
+        '-i',
+        filePath,
+        '-v',
+        'quiet',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        '-sexagesimal',
+      ];
+
+      final ProcessResult result = await Process.run('ffprobe', arguments);
+      if (result.exitCode == 0) {
+        // Parse the duration string (HH:MM:SS.MS format)
+        String durationStr = (result.stdout as String).trim();
+
+        // Simple parsing for HH:MM:SS.MS format
+        List<String> parts = durationStr.split(':');
+        if (parts.length == 3) {
+          int hours = int.parse(parts[0]);
+          int minutes = int.parse(parts[1]);
+          double seconds = double.parse(parts[2]);
+          return (hours * 3600) + (minutes * 60) + seconds;
+        }
+
+        // Fallback - try direct parsing as seconds
+        return double.tryParse(durationStr) ?? 60.0;
+      }
+      return 60.0; // Default fallback
+    } catch (e) {
+      logger.i('Error getting duration: $e');
+      return 60.0; // Default duration if we can't determine it
+    }
+  }
+
 
   /// Extract audio segment using platform-specific implementation
   static Future<Map<String, dynamic>> extractAudio({

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:extractmp3/services/audio_extractor_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -69,8 +70,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
 
-        double duration = await _getMP3Duration(path);
-
+        double duration = await AudioExtractorService.getAudioDuration(path);
+  
         // Then set the audio file
         audioExtractorVM.setAudioFile(path, name, duration);
 
@@ -133,45 +134,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       await audioExtractorVM.extractMP3(outputPath);
     } catch (e) {
       audioExtractorVM.setError('Error selecting save location: $e');
-    }
-  }
-
-  Future<double> _getMP3Duration(String filePath) async {
-    try {
-      // For Windows, use direct FFmpeg command
-      final List<String> arguments = [
-        '-i',
-        filePath,
-        '-v',
-        'quiet',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        '-sexagesimal',
-      ];
-
-      final ProcessResult result = await Process.run('ffprobe', arguments);
-      if (result.exitCode == 0) {
-        // Parse the duration string (HH:MM:SS.MS format)
-        String durationStr = (result.stdout as String).trim();
-
-        // Simple parsing for HH:MM:SS.MS format
-        List<String> parts = durationStr.split(':');
-        if (parts.length == 3) {
-          int hours = int.parse(parts[0]);
-          int minutes = int.parse(parts[1]);
-          double seconds = double.parse(parts[2]);
-          return (hours * 3600) + (minutes * 60) + seconds;
-        }
-
-        // Fallback - try direct parsing as seconds
-        return double.tryParse(durationStr) ?? 60.0;
-      }
-      return 60.0; // Default fallback
-    } catch (e) {
-      debugPrint('Error getting duration: $e');
-      return 60.0; // Default duration if we can't determine it
     }
   }
 
