@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:extractmp3/services/audio_extractor_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -69,10 +70,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
 
-        // Get the actual duration using FFmpeg
-        double duration = await _getMP3Duration(path);
+        final duration = await AudioExtractorService.getAudioDuration(path);
 
-        // Update the ViewModel with the file info and actual duration
+        // Then set the audio file
         audioExtractorVM.setAudioFile(path, name, duration);
 
         // Reset initialized flags to update the text fields with new values
