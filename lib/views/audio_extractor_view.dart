@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:extractmp3/services/audio_extractor_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -70,7 +69,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
 
-        final duration = await AudioExtractorService.getAudioDuration(path);
+        double duration = await _getMP3Duration(path);
 
         // Then set the audio file
         audioExtractorVM.setAudioFile(path, name, duration);

@@ -1,25 +1,45 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:logger/logger.dart';
 
 class AudioExtractorService {
   static const MethodChannel _channel = MethodChannel('audio_extractor');
   static const MethodChannel _durationChannel = MethodChannel('audio_duration');
+  static final Logger logger = Logger();
 
   /// Get audio duration in seconds
   static Future<double> getAudioDuration(String filePath) async {
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Use native method for mobile
       try {
         final result = await _durationChannel.invokeMethod('getDuration', {
           'filePath': filePath,
         });
         return (result as num).toDouble();
       } catch (e) {
-        print('Error getting duration: $e');
+        logger.i('Error getting duration: $e');
         return 60.0; // Default fallback
       }
     } else {
-      // For desktop, we can try to use FFprobe or just return a default
-      return 60.0;
+      // Use audioplayers for desktop (Windows, macOS, Linux)
+      try {
+        final player = AudioPlayer();
+        await player.setSource(DeviceFileSource(filePath));
+        
+        // Wait a bit for duration to be available
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        final duration = await player.getDuration();
+        final durationSeconds = duration?.inMilliseconds ?? 60000;
+        
+        await player.dispose();
+        
+        return durationSeconds / 1000.0;
+      } catch (e) {
+        logger.i('Error getting duration on desktop: $e');
+        return 60.0; // Default fallback
+      }
     }
   }
 
@@ -63,7 +83,7 @@ class AudioExtractorService {
         'startTime': startTime,
         'endTime': endTime,
       });
-
+      
       return {
         'success': result['success'] as bool,
         'message': result['message'] as String,
@@ -87,16 +107,11 @@ class AudioExtractorService {
   }) async {
     try {
       final List<String> arguments = [
-        '-i',
-        inputPath,
-        '-ss',
-        startTime.toString(),
-        '-to',
-        endTime.toString(),
-        '-acodec',
-        'libmp3lame',
-        '-b:a',
-        '192k',
+        '-i', inputPath,
+        '-ss', startTime.toString(),
+        '-to', endTime.toString(),
+        '-acodec', 'libmp3lame',
+        '-b:a', '192k',
         outputPath,
         '-y',
       ];
