@@ -57,10 +57,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     super.dispose();
   }
 
-  Future<void> _pickMP3File(
-    BuildContext context,
-    AudioExtractorVM audioExtractorVM,
-  ) async {
+  Future<void> _pickMP3File({
+    required BuildContext context,
+    required AudioExtractorVM audioExtractorVM,
+  }) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom, // Changed to custom
@@ -71,9 +71,13 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final name = result.files.single.name;
 
         double duration = await AudioExtractorService.getAudioDuration(path);
-  
+
         // Then set the audio file
-        audioExtractorVM.setAudioFile(path, name, duration);
+        audioExtractorVM.setAudioFile(
+          path: path,
+          name: name,
+          duration: duration,
+        );
 
         // Reset initialized flags to update the text fields with new values
         setState(() {
@@ -86,7 +90,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
   }
 
-  Future<void> _extractMP3(BuildContext context) async {
+  Future<void> _extractMP3({required BuildContext context}) async {
     final audioExtractorVM = Provider.of<AudioExtractorVM>(
       context,
       listen: false,
@@ -106,11 +110,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           audioExtractorVM.audioFile.name?.split('.').first ?? 'extract';
 
       // Format start and end positions for filename
-      final String startFormatted = formatTimePosition(
-        audioExtractorVM.startPosition,
+      final String startFormatted = _formatTimePosition(
+        seconds: audioExtractorVM.startPosition,
       ).replaceAll(':', '-');
-      final String endFormatted = formatTimePosition(
-        audioExtractorVM.endPosition,
+      final String endFormatted = _formatTimePosition(
+        seconds: audioExtractorVM.endPosition,
       ).replaceAll(':', '-');
 
       final String suggestedFileName =
@@ -224,7 +228,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       // Update the display with the model's value (which may have been validated)
       _safeUpdateController(
         controller,
-        formatTimePosition(audioExtractorVM.startPosition),
+        _formatTimePosition(seconds: audioExtractorVM.startPosition),
       );
     } else {
       // For end position
@@ -236,7 +240,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       // Update the display with the model's value (which may have been validated)
       _safeUpdateController(
         controller,
-        formatTimePosition(audioExtractorVM.endPosition),
+        _formatTimePosition(seconds: audioExtractorVM.endPosition),
       );
     }
   }
@@ -249,7 +253,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     try {
-      await audioPlayerVM.loadFile(filePath);
+      await audioPlayerVM.loadFile(filePath:  filePath);
       if (!audioPlayerVM.hasError) {
         await audioPlayerVM.togglePlay();
       } else {
@@ -295,7 +299,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         actions: [
           IconButton(
             icon: Icon(Icons.settings),
-            onPressed: () => _showSettingsDialog(context),
+            onPressed: () => _showSettingsDialog(context: context),
           ),
         ],
       ),
@@ -306,16 +310,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             // Initialize controllers with current values, but only once
             if (!_startFieldInitialized &&
                 audioExtractorVM.audioFile.isSelected) {
-              _startController.text = formatTimePosition(
-                audioExtractorVM.startPosition,
+              _startController.text = _formatTimePosition(
+                seconds: audioExtractorVM.startPosition,
               );
               _startFieldInitialized = true;
             }
 
             if (!_endFieldInitialized &&
                 audioExtractorVM.audioFile.isSelected) {
-              _endController.text = formatTimePosition(
-                audioExtractorVM.endPosition,
+              _endController.text = _formatTimePosition(
+                seconds: audioExtractorVM.endPosition,
               );
               _endFieldInitialized = true;
             }
@@ -324,7 +328,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ElevatedButton(
-                  onPressed: () => _pickMP3File(context, audioExtractorVM),
+                  onPressed:
+                      () => _pickMP3File(
+                        context: context,
+                        audioExtractorVM: audioExtractorVM,
+                      ),
                   child: const Text('Select MP3 File'),
                 ),
                 const SizedBox(height: 16),
@@ -334,7 +342,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'Duration: ${formatTimePosition(audioExtractorVM.audioFile.duration)}',
+                    'Duration: ${_formatTimePosition(seconds: audioExtractorVM.audioFile.duration)}',
                     style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 16),
@@ -466,7 +474,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 audioExtractorVM.endPosition = endSeconds;
                               }
 
-                              _extractMP3(context);
+                              _extractMP3(context: context);
                             },
                     child: const Text('Extract MP3'),
                   ),
@@ -504,9 +512,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
                   // Show player UI
                   _buildAudioPlayerControls(
-                    context,
-                    audioExtractorVM,
-                    audioPlayerVM,
+                    context: context,
+                    audioExtractorVM: audioExtractorVM,
+                    audioPlayerVM: audioPlayerVM,
                   ),
                 ],
               ],
@@ -518,11 +526,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }
 
   // Separated audio player controls for better organization
-  Widget _buildAudioPlayerControls(
-    BuildContext context,
-    AudioExtractorVM audioExtractorVM,
-    AudioPlayerVM audioPlayerVM,
-  ) {
+  Widget _buildAudioPlayerControls({
+    required BuildContext context,
+    required AudioExtractorVM audioExtractorVM,
+    required AudioPlayerVM audioPlayerVM,
+  }) {
     return Column(
       children: [
         // Play/Pause Button
@@ -568,7 +576,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             child: Slider(
               value: audioPlayerVM.progressPercent.clamp(0.0, 1.0),
               onChanged: (value) {
-                audioPlayerVM.seekByPercentage(value);
+                audioPlayerVM.seekByPercentage(percentage:  value);
               },
             ),
           ),
@@ -579,8 +587,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(formatDurationPosition(audioPlayerVM.position)),
-                Text(formatDurationPosition(audioPlayerVM.duration)),
+                Text(_formatDurationPosition(duration: audioPlayerVM.position)),
+                Text(_formatDurationPosition(duration: audioPlayerVM.duration)),
               ],
             ),
           ),
@@ -609,7 +617,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }
 
   // Improved format function for displaying seconds as time
-  String formatTimePosition(double seconds) {
+  String _formatTimePosition({required double seconds}) {
     final int hours = seconds ~/ 3600;
     final int minutes = (seconds % 3600) ~/ 60;
     final int secs = seconds.toInt() % 60;
@@ -638,7 +646,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }
 
   // Format a Duration object with the same style
-  String formatDurationPosition(Duration duration) {
+  String _formatDurationPosition({required Duration duration}) {
     final int hours = duration.inHours;
     final int minutes = duration.inMinutes % 60;
     final int seconds = duration.inSeconds % 60;
@@ -671,7 +679,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     return path.split(Platform.pathSeparator).last;
   }
 
-  void _showSettingsDialog(BuildContext context) {
+  void _showSettingsDialog({required BuildContext context}) {
     showDialog(
       context: context,
       builder:

@@ -53,7 +53,7 @@ class AudioPlayerVM extends ChangeNotifier {
       _player = AudioPlayer();
       _setupPlayerListeners();
     } catch (e) {
-      _setError('Error initializing player: $e');
+      _setError(message: 'Error initializing player: $e');
     }
   }
 
@@ -156,14 +156,14 @@ class AudioPlayerVM extends ChangeNotifier {
   }
 
   // Load a file for playback
-  Future<void> loadFile(String filePath) async {
+  Future<void> loadFile({required String filePath}) async {
     // Reset error state
     _hasError = false;
     _errorMessage = '';
 
     try {
       if (!File(filePath).existsSync()) {
-        _setError('File does not exist: $filePath');
+        _setError(message: 'File does not exist: $filePath');
         return;
       }
 
@@ -195,10 +195,10 @@ class AudioPlayerVM extends ChangeNotifier {
           notifyListeners();
         }
       } catch (e) {
-        _setError('Error loading audio: $e');
+        _setError(message: 'Error loading audio: $e');
       }
     } catch (e) {
-      _setError('Error loading audio file: $e');
+      _setError(message: 'Error loading audio file: $e');
     }
   }
 
@@ -214,18 +214,18 @@ class AudioPlayerVM extends ChangeNotifier {
         if (Platform.isWindows && _currentFilePath != null && !_isPlaying) {
           // Check if we need to reload the file
           if (_position == Duration.zero && _duration == Duration.zero) {
-            await loadFile(_currentFilePath!);
+            await loadFile(filePath:  _currentFilePath!);
           }
         }
         await _player!.resume();
       }
     } catch (e) {
-      _setError('Error toggling playback: $e');
+      _setError(message: 'Error toggling playback: $e');
     }
   }
 
   // Seek to a specific position
-  Future<void> seekTo(Duration position) async {
+  Future<void> _seekTo({required Duration position}) async {
     if (!_isLoaded || _player == null) return;
 
     try {
@@ -236,17 +236,17 @@ class AudioPlayerVM extends ChangeNotifier {
   }
 
   // Seek by percentage (0.0 to 1.0)
-  Future<void> seekByPercentage(double percentage) async {
+  Future<void> seekByPercentage({required double percentage}) async {
     if (!_isLoaded || _duration == Duration.zero || _player == null) return;
 
     final newPosition = Duration(
       milliseconds: (percentage * _duration.inMilliseconds).round(),
     );
-    await seekTo(newPosition);
+    await _seekTo(position: newPosition);
   }
 
   // Set error state
-  void _setError(String message) {
+  void _setError({required String message}) {
     _hasError = true;
     _errorMessage = message;
     _isLoaded = false;
@@ -259,7 +259,7 @@ class AudioPlayerVM extends ChangeNotifier {
     _initializePlayer();
     if (_currentFilePath != null) {
       await Future.delayed(const Duration(milliseconds: 500));
-      await loadFile(_currentFilePath!);
+      await loadFile(filePath:  _currentFilePath!);
     }
   }
 

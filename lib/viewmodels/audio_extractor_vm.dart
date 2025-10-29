@@ -8,13 +8,13 @@ class AudioExtractorVM extends ChangeNotifier {
   double _startPosition = 0.0;
   double _endPosition = 60.0;
   ExtractionResult _extractionResult = ExtractionResult.initial();
-  
+
   // Getters
   AudioFile get audioFile => _audioFile;
   double get startPosition => _startPosition;
   double get endPosition => _endPosition;
   ExtractionResult get extractionResult => _extractionResult;
-  
+
   // Setters
   set startPosition(double value) {
     if (value >= 0 && value < _endPosition) {
@@ -22,15 +22,19 @@ class AudioExtractorVM extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   set endPosition(double value) {
     if (value > _startPosition && value <= _audioFile.duration) {
       _endPosition = value;
       notifyListeners();
     }
   }
-  
-  void setAudioFile(String path, String name, double duration) {
+
+  void setAudioFile({
+    required String path,
+    required String name,
+    required double duration,
+  }) {
     _audioFile = AudioFile(path: path, name: name, duration: duration);
     _startPosition = 0.0;
     _endPosition = duration;
@@ -40,17 +44,17 @@ class AudioExtractorVM extends ChangeNotifier {
     );
     notifyListeners();
   }
-  
+
   void setError(String errorMessage) {
     _extractionResult = ExtractionResult.error(errorMessage);
     notifyListeners();
   }
-  
+
   void startProcessing() {
     _extractionResult = ExtractionResult.processing();
     notifyListeners();
   }
-  
+
   Future<void> extractMP3(String outputPath) async {
     if (_audioFile.path == null) {
       _extractionResult = ExtractionResult.error(
@@ -59,17 +63,17 @@ class AudioExtractorVM extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    
+
     try {
       startProcessing();
-      
+
       final result = await AudioExtractorService.extractAudio(
         inputPath: _audioFile.path!,
         outputPath: outputPath,
         startTime: _startPosition,
         endTime: _endPosition,
       );
-      
+
       if (result['success'] == true) {
         _extractionResult = ExtractionResult.success(result['outputPath']!);
       } else {
@@ -81,7 +85,7 @@ class AudioExtractorVM extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   void resetExtractionResult() {
     _extractionResult = ExtractionResult.initial();
     notifyListeners();
