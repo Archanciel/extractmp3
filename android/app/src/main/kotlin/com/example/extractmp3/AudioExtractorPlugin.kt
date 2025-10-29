@@ -16,6 +16,7 @@ import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import android.util.Log
+import kotlinx.coroutines.*
 
 class AudioExtractorPlugin {
     companion object {
@@ -32,7 +33,15 @@ class AudioExtractorPlugin {
             
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "extractAudio" -> extractAudio(call, result)
+                    "extractAudio" -> {
+                        // Run extraction in background thread
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val response = extractAudioInBackground(call)
+                            withContext(Dispatchers.Main) {
+                                result.success(response)
+                            }
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -69,14 +78,14 @@ class AudioExtractorPlugin {
             }
         }
         
-        private fun extractAudio(call: MethodCall, result: MethodChannel.Result) {
+        private suspend fun extractAudioInBackground(call: MethodCall): Map<String, Any?> = withContext(Dispatchers.IO) {
             try {
                 val inputPath = call.argument<String>("inputPath")!!
                 val outputPath = call.argument<String>("outputPath")!!
                 val startTime = call.argument<Double>("startTime")!!
                 val endTime = call.argument<Double>("endTime")!!
                 
-                Log.d(TAG, "Starting extraction")
+                Log.d(TAG, "Starting extraction in background")
                 Log.d(TAG, "Input: $inputPath")
                 Log.d(TAG, "Output: $outputPath")
                 Log.d(TAG, "Time: $startTime to $endTime seconds")
@@ -95,31 +104,28 @@ class AudioExtractorPlugin {
                 
                 if (!extractSuccess) {
                     File(tempM4aPath).delete()
-                    result.success(mapOf(
+                    return@withContext mapOf(
                         "success" to false,
-                        "message" to "Failed to extract audio segment to M4A",
+                        "message" to "Failed to extract audio segment",
                         "outputPath" to null
-                    ))
-                    return
+                    )
                 }
                 
-                // Check temp file exists and has content
                 val tempFile = File(tempM4aPath)
                 if (!tempFile.exists() || tempFile.length() < 1000) {
-                    Log.e(TAG, "Temp M4A file is missing or too small: ${tempFile.length()} bytes")
+                    Log.e(TAG, "Temp M4A file is invalid: ${tempFile.length()} bytes")
                     tempFile.delete()
-                    result.success(mapOf(
+                    return@withContext mapOf(
                         "success" to false,
-                        "message" to "Extracted M4A file is invalid or too small",
+                        "message" to "Extracted file is too small",
                         "outputPath" to null
-                    ))
-                    return
+                    )
                 }
                 
                 Log.d(TAG, "Temp M4A file size: ${tempFile.length()} bytes")
                 Log.d(TAG, "Converting M4A to MP3...")
                 
-                val convertSuccess = convertM4aToMp3(tempM4aPath, outputPath)
+                val convertSuccess = convertM4aToMp3Simple(tempM4aPath, outputPath)
                 
                 Log.d(TAG, "Convert to MP3 success: $convertSuccess")
                 
@@ -128,25 +134,25 @@ class AudioExtractorPlugin {
                 if (convertSuccess) {
                     val outputFile = File(outputPath)
                     Log.d(TAG, "Final MP3 file size: ${outputFile.length()} bytes")
-                    result.success(mapOf(
+                    mapOf(
                         "success" to true,
                         "message" to "Extraction successful",
                         "outputPath" to outputPath
-                    ))
+                    )
                 } else {
-                    result.success(mapOf(
+                    mapOf(
                         "success" to false,
-                        "message" to "Failed to convert M4A to MP3",
+                        "message" to "Failed to convert to MP3",
                         "outputPath" to null
-                    ))
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during extraction", e)
-                result.success(mapOf(
+                mapOf(
                     "success" to false,
                     "message" to "Error: ${e.message}",
                     "outputPath" to null
-                ))
+                )
             }
         }
         
@@ -162,7 +168,6 @@ class AudioExtractorPlugin {
             var muxer: MediaMuxer? = null
             
             try {
-                Log.d(TAG, "Setting up extractor...")
                 extractor.setDataSource(inputPath)
                 
                 var audioTrackIndex = -1
@@ -171,7 +176,6 @@ class AudioExtractorPlugin {
                 for (i in 0 until extractor.trackCount) {
                     val format = extractor.getTrackFormat(i)
                     val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                    Log.d(TAG, "Track $i: $mime")
                     
                     if (mime.startsWith("audio/")) {
                         audioTrackIndex = i
@@ -181,7 +185,6 @@ class AudioExtractorPlugin {
                 }
                 
                 if (audioTrackIndex == -1 || inputFormat == null) {
-                    Log.e(TAG, "No audio track found")
                     return false
                 }
                 
@@ -192,9 +195,6 @@ class AudioExtractorPlugin {
                 val channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: ""
                 
-                Log.d(TAG, "Input format - Sample rate: $sampleRate, Channels: $channelCount, MIME: $mime")
-                
-                Log.d(TAG, "Creating decoder...")
                 decoder = MediaCodec.createDecoderByType(mime)
                 decoder.configure(inputFormat, null, null, 0)
                 decoder.start()
@@ -205,21 +205,14 @@ class AudioExtractorPlugin {
                     channelCount
                 )
                 outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, 192000)
-                outputFormat.setInteger(
-                    MediaFormat.KEY_AAC_PROFILE,
-                    MediaCodecInfo.CodecProfileLevel.AACObjectLC
-                )
+                outputFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 outputFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
                 
-                Log.d(TAG, "Creating encoder...")
                 encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
                 encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 encoder.start()
                 
-                val outputFile = File(outputPath)
-                outputFile.parentFile?.mkdirs()
-                
-                Log.d(TAG, "Creating muxer...")
+                File(outputPath).parentFile?.mkdirs()
                 muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                 
                 var muxerTrackIndex = -1
@@ -229,14 +222,9 @@ class AudioExtractorPlugin {
                 val encoderBufferInfo = MediaCodec.BufferInfo()
                 
                 var extractorDone = false
-                var decoderDone = false
                 var encoderDone = false
-                var samplesProcessed = 0
-                
-                Log.d(TAG, "Starting transcode loop...")
                 
                 while (!encoderDone) {
-                    // Feed decoder
                     if (!extractorDone) {
                         val inputBufferIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
                         if (inputBufferIndex >= 0) {
@@ -245,120 +233,78 @@ class AudioExtractorPlugin {
                             val presentationTimeUs = extractor.sampleTime
                             
                             if (sampleSize < 0 || presentationTimeUs > endTimeUs) {
-                                Log.d(TAG, "End of input reached. Samples processed: $samplesProcessed")
-                                decoder.queueInputBuffer(
-                                    inputBufferIndex,
-                                    0,
-                                    0,
-                                    0,
-                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                                )
+                                decoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 extractorDone = true
                             } else {
-                                decoder.queueInputBuffer(
-                                    inputBufferIndex,
-                                    0,
-                                    sampleSize,
-                                    presentationTimeUs,
-                                    0
-                                )
+                                decoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, presentationTimeUs, 0)
                                 extractor.advance()
-                                samplesProcessed++
                             }
                         }
                     }
                     
-                    // Get decoded data and feed to encoder
-                    if (!decoderDone) {
-                        val outputBufferIndex = decoder.dequeueOutputBuffer(decoderBufferInfo, TIMEOUT_US)
+                    val outputBufferIndex = decoder.dequeueOutputBuffer(decoderBufferInfo, TIMEOUT_US)
+                    
+                    if (outputBufferIndex >= 0) {
+                        val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
                         
-                        if (outputBufferIndex >= 0) {
-                            val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
-                            
-                            if (decoderBufferInfo.size > 0 && 
-                                decoderBufferInfo.presentationTimeUs >= startTimeUs &&
-                                decoderBufferInfo.presentationTimeUs <= endTimeUs) {
+                        if (decoderBufferInfo.size > 0 && decoderBufferInfo.presentationTimeUs >= startTimeUs) {
+                            val encoderInputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
+                            if (encoderInputBufferIndex >= 0) {
+                                val encoderInputBuffer = encoder.getInputBuffer(encoderInputBufferIndex)
+                                encoderInputBuffer!!.clear()
                                 
-                                val encoderInputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
-                                if (encoderInputBufferIndex >= 0) {
-                                    val encoderInputBuffer = encoder.getInputBuffer(encoderInputBufferIndex)
-                                    encoderInputBuffer!!.clear()
-                                    
-                                    outputBuffer!!.position(decoderBufferInfo.offset)
-                                    outputBuffer.limit(decoderBufferInfo.offset + decoderBufferInfo.size)
-                                    encoderInputBuffer.put(outputBuffer)
-                                    
-                                    val flags = if ((decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                        MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                                    } else {
-                                        0
-                                    }
-                                    
-                                    encoder.queueInputBuffer(
-                                        encoderInputBufferIndex,
-                                        0,
-                                        decoderBufferInfo.size,
-                                        decoderBufferInfo.presentationTimeUs - startTimeUs,
-                                        flags
-                                    )
-                                }
-                            }
-                            
-                            decoder.releaseOutputBuffer(outputBufferIndex, false)
-                            
-                            if ((decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                Log.d(TAG, "Decoder done")
-                                decoderDone = true
+                                outputBuffer!!.position(decoderBufferInfo.offset)
+                                outputBuffer.limit(decoderBufferInfo.offset + decoderBufferInfo.size)
+                                encoderInputBuffer.put(outputBuffer)
+                                
+                                val flags = if ((decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                                } else 0
+                                
+                                encoder.queueInputBuffer(
+                                    encoderInputBufferIndex,
+                                    0,
+                                    decoderBufferInfo.size,
+                                    decoderBufferInfo.presentationTimeUs - startTimeUs,
+                                    flags
+                                )
                             }
                         }
+                        
+                        decoder.releaseOutputBuffer(outputBufferIndex, false)
                     }
                     
-                    // Get encoded data
                     val encoderOutputBufferIndex = encoder.dequeueOutputBuffer(encoderBufferInfo, TIMEOUT_US)
                     
                     if (encoderOutputBufferIndex >= 0) {
                         val encodedData = encoder.getOutputBuffer(encoderOutputBufferIndex)
                         
-                        if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 &&
-                            encoderBufferInfo.size > 0) {
-                            
+                        if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 && encoderBufferInfo.size > 0) {
                             if (!muxerStarted) {
-                                Log.e(TAG, "Muxer not started when trying to write data")
                                 return false
                             }
-                            
                             encodedData!!.position(encoderBufferInfo.offset)
                             encodedData.limit(encoderBufferInfo.offset + encoderBufferInfo.size)
-                            
                             muxer.writeSampleData(muxerTrackIndex, encodedData, encoderBufferInfo)
                         }
                         
                         encoder.releaseOutputBuffer(encoderOutputBufferIndex, false)
                         
                         if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                            Log.d(TAG, "Encoder done")
                             encoderDone = true
                         }
                     } else if (encoderOutputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        if (muxerStarted) {
-                            Log.e(TAG, "Format changed twice")
-                            return false
-                        }
-                        
-                        val newFormat = encoder.outputFormat
-                        Log.d(TAG, "Encoder output format changed: $newFormat")
-                        muxerTrackIndex = muxer.addTrack(newFormat)
+                        if (muxerStarted) return false
+                        muxerTrackIndex = muxer.addTrack(encoder.outputFormat)
                         muxer.start()
                         muxerStarted = true
-                        Log.d(TAG, "Muxer started")
                     }
                 }
                 
-                Log.d(TAG, "Transcode complete. Total samples: $samplesProcessed")
                 return true
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error in extractAudioSegment", e)
+                Log.e(TAG, "Error extracting", e)
                 return false
             } finally {
                 try {
@@ -370,19 +316,18 @@ class AudioExtractorPlugin {
                     muxer?.stop()
                     muxer?.release()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error cleaning up resources", e)
+                    Log.e(TAG, "Cleanup error", e)
                 }
             }
         }
         
-        private fun convertM4aToMp3(inputM4aPath: String, outputMp3Path: String): Boolean {
+        private fun convertM4aToMp3Simple(inputM4aPath: String, outputMp3Path: String): Boolean {
             val extractor = MediaExtractor()
             var decoder: MediaCodec? = null
-            var outputStream: FileOutputStream? = null
             var lame: AndroidLame? = null
+            var outputStream: FileOutputStream? = null
             
             try {
-                Log.d(TAG, "Converting M4A to MP3...")
                 extractor.setDataSource(inputM4aPath)
                 
                 var audioTrackIndex = -1
@@ -391,7 +336,6 @@ class AudioExtractorPlugin {
                 for (i in 0 until extractor.trackCount) {
                     val format = extractor.getTrackFormat(i)
                     val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                    
                     if (mime.startsWith("audio/")) {
                         audioTrackIndex = i
                         inputFormat = format
@@ -399,10 +343,7 @@ class AudioExtractorPlugin {
                     }
                 }
                 
-                if (audioTrackIndex == -1 || inputFormat == null) {
-                    Log.e(TAG, "No audio track in M4A")
-                    return false
-                }
+                if (audioTrackIndex == -1 || inputFormat == null) return false
                 
                 extractor.selectTrack(audioTrackIndex)
                 
@@ -410,69 +351,48 @@ class AudioExtractorPlugin {
                 val channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: ""
                 
-                Log.d(TAG, "M4A format - Sample rate: $sampleRate, Channels: $channelCount")
-                
                 decoder = MediaCodec.createDecoderByType(mime)
                 decoder.configure(inputFormat, null, null, 0)
                 decoder.start()
                 
-                val lameBuilder = LameBuilder()
-                    .setInSampleRate(sampleRate)
-                    .setOutChannels(channelCount)
-                    .setOutBitrate(192)
-                    .setOutSampleRate(sampleRate)
-                    .setQuality(5)
+                lame = AndroidLame(
+                    LameBuilder()
+                        .setInSampleRate(sampleRate)
+                        .setOutChannels(channelCount)
+                        .setOutBitrate(192)
+                        .setOutSampleRate(sampleRate)
+                        .setQuality(5)
+                )
                 
-                lame = AndroidLame(lameBuilder)
+                File(outputMp3Path).parentFile?.mkdirs()
+                outputStream = FileOutputStream(outputMp3Path)
                 
-                val outputFile = File(outputMp3Path)
-                outputFile.parentFile?.mkdirs()
-                outputStream = FileOutputStream(outputFile)
-                
-                val decoderBufferInfo = MediaCodec.BufferInfo()
                 val mp3Buffer = ByteArray(8192)
-                
+                val decoderBufferInfo = MediaCodec.BufferInfo()
                 var extractorDone = false
-                var pcmSamplesProcessed = 0
-                
-                Log.d(TAG, "Starting M4A decode and MP3 encode...")
                 
                 while (true) {
                     if (!extractorDone) {
-                        val inputBufferIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
+                        val inputBufferIndex = decoder.dequeueInputBuffer(5000)
                         if (inputBufferIndex >= 0) {
                             val inputBuffer = decoder.getInputBuffer(inputBufferIndex)
                             val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
                             
                             if (sampleSize < 0) {
-                                decoder.queueInputBuffer(
-                                    inputBufferIndex,
-                                    0,
-                                    0,
-                                    0,
-                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                                )
+                                decoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 extractorDone = true
                             } else {
-                                val presentationTimeUs = extractor.sampleTime
-                                decoder.queueInputBuffer(
-                                    inputBufferIndex,
-                                    0,
-                                    sampleSize,
-                                    presentationTimeUs,
-                                    0
-                                )
+                                decoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, extractor.sampleTime, 0)
                                 extractor.advance()
                             }
                         }
                     }
                     
-                    val outputBufferIndex = decoder.dequeueOutputBuffer(decoderBufferInfo, TIMEOUT_US)
+                    val outputBufferIndex = decoder.dequeueOutputBuffer(decoderBufferInfo, 5000)
                     
                     if (outputBufferIndex >= 0) {
-                        val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
-                        
                         if (decoderBufferInfo.size > 0) {
+                            val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
                             outputBuffer!!.position(decoderBufferInfo.offset)
                             outputBuffer.limit(decoderBufferInfo.offset + decoderBufferInfo.size)
                             
@@ -482,22 +402,17 @@ class AudioExtractorPlugin {
                             val bytesEncoded = if (channelCount == 1) {
                                 lame.encode(pcmData, pcmData, pcmData.size, mp3Buffer)
                             } else {
-                                val leftChannel = ShortArray(pcmData.size / 2)
-                                val rightChannel = ShortArray(pcmData.size / 2)
-                                
+                                val left = ShortArray(pcmData.size / 2)
+                                val right = ShortArray(pcmData.size / 2)
                                 for (i in pcmData.indices step 2) {
-                                    leftChannel[i / 2] = pcmData[i]
-                                    if (i + 1 < pcmData.size) {
-                                        rightChannel[i / 2] = pcmData[i + 1]
-                                    }
+                                    left[i / 2] = pcmData[i]
+                                    if (i + 1 < pcmData.size) right[i / 2] = pcmData[i + 1]
                                 }
-                                
-                                lame.encode(leftChannel, rightChannel, leftChannel.size, mp3Buffer)
+                                lame.encode(left, right, left.size, mp3Buffer)
                             }
                             
                             if (bytesEncoded > 0) {
                                 outputStream.write(mp3Buffer, 0, bytesEncoded)
-                                pcmSamplesProcessed += pcmData.size
                             }
                         }
                         
@@ -514,11 +429,10 @@ class AudioExtractorPlugin {
                     outputStream.write(mp3Buffer, 0, flushBytes)
                 }
                 
-                Log.d(TAG, "M4A to MP3 conversion complete. PCM samples processed: $pcmSamplesProcessed")
                 return true
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error converting M4A to MP3", e)
+                Log.e(TAG, "MP3 conversion error", e)
                 return false
             } finally {
                 try {
@@ -528,7 +442,7 @@ class AudioExtractorPlugin {
                     outputStream?.close()
                     lame?.close()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error cleaning up M4A conversion", e)
+                    Log.e(TAG, "Cleanup error", e)
                 }
             }
         }
