@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../models/audio_file.dart';
 import '../models/audio_segment.dart';
 import '../models/extraction_result.dart';
