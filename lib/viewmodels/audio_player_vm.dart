@@ -103,7 +103,7 @@ class AudioPlayerVM extends ChangeNotifier {
         ),
       );
 
-      // Listen for completion - FIXED
+      // Listen for completion - FIXED FOR ANDROID
       _subscriptions.add(
         _player!.onPlayerComplete.listen(
           (_) async {
@@ -113,8 +113,8 @@ class AudioPlayerVM extends ChangeNotifier {
             // Reset position to beginning
             _position = Duration.zero;
 
-            // For Windows, we need to reload the file to ensure it can be replayed
-            if (Platform.isWindows && _currentFilePath != null) {
+            // For Windows and Android, we need to reload the file to ensure it can be replayed
+            if ((Platform.isWindows || Platform.isAndroid) && _currentFilePath != null) {
               try {
                 // Reload the source to ensure it's ready for replay
                 await _player!.setSource(DeviceFileSource(_currentFilePath!));
