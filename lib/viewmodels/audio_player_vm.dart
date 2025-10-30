@@ -254,6 +254,42 @@ class AudioPlayerVM extends ChangeNotifier {
     notifyListeners();
   }
 
+  // NEW: Release the current file to prevent file locking issues (especially on Windows)
+  Future<void> releaseCurrentFile() async {
+    try {
+      debugPrint('Releasing current file...');
+      
+      if (_player != null) {
+        // Stop playback if playing
+        if (_isPlaying) {
+          await _player!.stop();
+        }
+        
+        // Reset state
+        _isPlaying = false;
+        _isLoaded = false;
+        _position = Duration.zero;
+        _duration = Duration.zero;
+        
+        // Dispose of the current player to release file handles
+        _disposeCurrentPlayer();
+        
+        // Wait a bit to ensure file handles are released
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        // Reinitialize the player for future use
+        _initializePlayer();
+        
+        debugPrint('File released successfully');
+      }
+      
+      _currentFilePath = null;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error releasing file: $e');
+    }
+  }
+
   // Attempt to fix player issues
   Future<void> tryRepairPlayer() async {
     _initializePlayer();

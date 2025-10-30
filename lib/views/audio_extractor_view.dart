@@ -86,6 +86,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       context,
       listen: false,
     );
+    
+    final audioPlayerVM = Provider.of<AudioPlayerVM>(
+      context,
+      listen: false,
+    );
 
     if (audioExtractorVM.audioFile.path == null) {
       audioExtractorVM.setError('Please select an MP3 file first');
@@ -98,6 +103,29 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
 
     try {
+      // ========== CRITICAL FIX FOR WINDOWS FILE LOCKING ==========
+      // Release any file locks BEFORE extraction to prevent "Permission denied"
+      if (Platform.isWindows && audioPlayerVM.isLoaded) {
+        debugPrint('🔓 Releasing audio player file locks before extraction...');
+        
+        // Show user feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preparing extraction...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        
+        // Release the file
+        await audioPlayerVM.releaseCurrentFile();
+        
+        // Give Windows extra time to fully release file handles
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        debugPrint('✅ File locks released');
+      }
+      // ===========================================================
+
       // Create suggested filename
       final String baseFileName =
           audioExtractorVM.audioFile.name?.split('.').first ?? 'extract';
@@ -477,7 +505,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 audioExtractorVM.segments.isEmpty
                             ? null
                             : () {
-                              audioPlayerVM.isLoaded = false;
                               _extractMP3(context: context);
                             },
                     child: const Text('Extract MP3'),

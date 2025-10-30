@@ -180,6 +180,7 @@ class AudioExtractorService {
 
           final result = await Process.run('ffmpeg', arguments);
           if (result.exitCode != 0) {
+            logger.e('Failed to extract segment $i: ${result.stderr}');
             return {
               'success': false,
               'message': 'Failed to extract segment ${i + 1}: ${result.stderr}',
@@ -216,39 +217,68 @@ class AudioExtractorService {
           }
         }
 
-        // Create concat file
+        // Create concat file with proper path formatting for Windows
         final concatFilePath =
             '${tempDir.path}${Platform.pathSeparator}concat.txt';
         final concatFile = File(concatFilePath);
-        final concatContent = segmentFiles.map((f) => "file '$f'").join('\n');
+        
+        // FIXED: Properly format paths for FFmpeg on Windows
+        // FFmpeg concat requires forward slashes and proper escaping
+        final concatContent = segmentFiles.map((f) {
+          // Convert Windows backslashes to forward slashes
+          String path = f.replaceAll('\\', '/');
+          // Escape single quotes in the path
+          path = path.replaceAll("'", "'\\''");
+          return "file '$path'";
+        }).join('\n');
+        
+        logger.i('Concat file content:\n$concatContent');
         await concatFile.writeAsString(concatContent);
 
         // Concatenate all segments
+        // FIXED: Convert BOTH concat file path AND output path to forward slashes
+        String concatFilePathForFFmpeg = concatFilePath.replaceAll('\\', '/');
+        String outputPathForFFmpeg = outputPath.replaceAll('\\', '/');
+        
         final concatArgs = [
           '-f',
           'concat',
           '-safe',
           '0',
           '-i',
-          concatFilePath,
+          concatFilePathForFFmpeg,
           '-acodec',
           'copy',
-          outputPath,
+          outputPathForFFmpeg,  // ← Now using converted output path!
           '-y',
         ];
 
+        logger.i('Running FFmpeg concat with args: $concatArgs');
         final concatResult = await Process.run('ffmpeg', concatArgs);
 
         if (concatResult.exitCode == 0) {
+          logger.i('Extraction successful!');
           return {
             'success': true,
             'message': 'Extraction successful',
             'outputPath': outputPath,
           };
         } else {
+          logger.e('FFmpeg concat stderr: ${concatResult.stderr}');
+          
+          // Check for specific error types
+          String errorStderr = concatResult.stderr.toString();
+          String errorMessage = 'Failed to concatenate segments';
+          
+          if (errorStderr.contains('Permission denied')) {
+            errorMessage = 'Permission denied. The file may be in use by another program (like the audio player). Please stop playback and try again.';
+          } else if (errorStderr.contains('No such file or directory')) {
+            errorMessage = 'File not found. Please check that the input file still exists.';
+          }
+          
           return {
             'success': false,
-            'message': 'Failed to concatenate segments: ${concatResult.stderr}',
+            'message': '$errorMessage\n\nDetails: ${concatResult.stderr}',
             'outputPath': null,
           };
         }
@@ -256,11 +286,13 @@ class AudioExtractorService {
         // Clean up temp directory
         try {
           tempDir.deleteSync(recursive: true);
+          logger.i('Temp directory cleaned up');
         } catch (e) {
           logger.i('Failed to clean up temp directory: $e');
         }
       }
     } catch (e) {
+      logger.e('Exception during extraction: $e');
       return {
         'success': false,
         'message': 'FFmpeg error: $e',
