@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/audio_segment.dart';
-import '../widgets/add_segment_dialog.dart';
+import 'widgets/add_segment_dialog.dart';
 import '../constants.dart';
 import '../viewmodels/audio_extractor_vm.dart';
 import '../viewmodels/audio_player_vm.dart';

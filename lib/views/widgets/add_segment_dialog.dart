@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/audio_segment.dart';
-import '../views/audio_extractor_view.dart'; // For TimeTextInputFormatter
+import '../../models/audio_segment.dart';
+import '../audio_extractor_view.dart'; // For TimeTextInputFormatter
 
 class AddSegmentDialog extends StatefulWidget {
   final double maxDuration;
