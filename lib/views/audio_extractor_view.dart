@@ -70,7 +70,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
 
-        double duration = await AudioExtractorService.getAudioDuration(path);
+        double duration = await AudioExtractorService.getAudioDuration(filePath:  path);
 
         // Then set the audio file
         audioExtractorVM.setAudioFile(

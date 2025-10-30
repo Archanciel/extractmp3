@@ -8,7 +8,7 @@ class AudioExtractorService {
   static final Logger logger = Logger();
 
   /// Get audio duration in seconds
-  static Future<double> getAudioDuration(String filePath) async {
+  static Future<double> getAudioDuration({required String filePath}) async {
     if (Platform.isAndroid || Platform.isIOS) {
       // Use native method for mobile
       try {
@@ -22,11 +22,11 @@ class AudioExtractorService {
       }
     } else {
       // Use FFmpeg for desktop
-      return await getMP3Duration(filePath);
+      return await _getMP3Duration(filePath:  filePath);
     }
   }
-  
-  static Future<double> getMP3Duration(String filePath) async {
+
+  static Future<double> _getMP3Duration({required String filePath}) async {
     try {
       // For Windows, use direct FFmpeg command
       final List<String> arguments = [
@@ -64,7 +64,6 @@ class AudioExtractorService {
       return 60.0; // Default duration if we can't determine it
     }
   }
-
 
   /// Extract audio segment using platform-specific implementation
   static Future<Map<String, dynamic>> extractAudio({
@@ -106,7 +105,7 @@ class AudioExtractorService {
         'startTime': startTime,
         'endTime': endTime,
       });
-      
+
       return {
         'success': result['success'] as bool,
         'message': result['message'] as String,
@@ -130,11 +129,16 @@ class AudioExtractorService {
   }) async {
     try {
       final List<String> arguments = [
-        '-i', inputPath,
-        '-ss', startTime.toString(),
-        '-to', endTime.toString(),
-        '-acodec', 'libmp3lame',
-        '-b:a', '192k',
+        '-i',
+        inputPath,
+        '-ss',
+        startTime.toString(),
+        '-to',
+        endTime.toString(),
+        '-acodec',
+        'libmp3lame',
+        '-b:a',
+        '192k',
         outputPath,
         '-y',
       ];
