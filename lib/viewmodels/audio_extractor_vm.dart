@@ -1,34 +1,26 @@
 import 'package:flutter/foundation.dart';
 import '../models/audio_file.dart';
+import '../models/audio_segment.dart';
 import '../models/extraction_result.dart';
 import '../services/audio_extractor_service.dart';
 
 class AudioExtractorVM extends ChangeNotifier {
   AudioFile _audioFile = AudioFile();
-  double _startPosition = 0.0;
-  double _endPosition = 60.0;
+  List<AudioSegment> _segments = [];
   ExtractionResult _extractionResult = ExtractionResult.initial();
 
   // Getters
   AudioFile get audioFile => _audioFile;
-  double get startPosition => _startPosition;
-  double get endPosition => _endPosition;
+  List<AudioSegment> get segments => List.unmodifiable(_segments);
   ExtractionResult get extractionResult => _extractionResult;
-
-  // Setters
-  set startPosition(double value) {
-    if (value >= 0 && value < _endPosition) {
-      _startPosition = value;
-      notifyListeners();
-    }
+  
+  // Computed properties
+  double get totalDuration {
+    return _segments.fold(0.0, (sum, segment) => 
+      sum + segment.duration + segment.silenceDuration);
   }
-
-  set endPosition(double value) {
-    if (value > _startPosition && value <= _audioFile.duration) {
-      _endPosition = value;
-      notifyListeners();
-    }
-  }
+  
+  int get segmentCount => _segments.length;
 
   void setAudioFile({
     required String path,
@@ -36,12 +28,36 @@ class AudioExtractorVM extends ChangeNotifier {
     required double duration,
   }) {
     _audioFile = AudioFile(path: path, name: name, duration: duration);
-    _startPosition = 0.0;
-    _endPosition = duration;
+    // Clear segments when new file is loaded
+    _segments = [];
     _extractionResult = ExtractionResult(
       status: ExtractionStatus.none,
       message: 'File selected: $name',
     );
+    notifyListeners();
+  }
+  
+  void addSegment(AudioSegment segment) {
+    _segments.add(segment);
+    notifyListeners();
+  }
+  
+  void updateSegment(int index, AudioSegment segment) {
+    if (index >= 0 && index < _segments.length) {
+      _segments[index] = segment;
+      notifyListeners();
+    }
+  }
+  
+  void removeSegment(int index) {
+    if (index >= 0 && index < _segments.length) {
+      _segments.removeAt(index);
+      notifyListeners();
+    }
+  }
+  
+  void clearSegments() {
+    _segments.clear();
     notifyListeners();
   }
 
@@ -63,15 +79,22 @@ class AudioExtractorVM extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    
+    if (_segments.isEmpty) {
+      _extractionResult = ExtractionResult.error(
+        'Please add at least one segment to extract',
+      );
+      notifyListeners();
+      return;
+    }
 
     try {
       startProcessing();
 
-      final result = await AudioExtractorService.extractAudio(
+      final result = await AudioExtractorService.extractAudioSegments(
         inputPath: _audioFile.path!,
         outputPath: outputPath,
-        startTime: _startPosition,
-        endTime: _endPosition,
+        segments: _segments,
       );
 
       if (result['success'] == true) {

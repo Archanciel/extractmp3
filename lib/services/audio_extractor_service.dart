@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 
+import '../models/audio_segment.dart';
+
 class AudioExtractorService {
   static const MethodChannel _channel = MethodChannel('audio_extractor');
   static const MethodChannel _durationChannel = MethodChannel('audio_duration');
@@ -22,7 +24,7 @@ class AudioExtractorService {
       }
     } else {
       // Use FFmpeg for desktop
-      return await _getMP3Duration(filePath:  filePath);
+      return await _getMP3Duration(filePath: filePath);
     }
   }
 
@@ -88,6 +90,182 @@ class AudioExtractorService {
       );
     } else {
       throw UnsupportedError('Platform not supported');
+    }
+  }
+
+  /// Extract multiple audio segments and combine them
+  static Future<Map<String, dynamic>> extractAudioSegments({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioSegment> segments,
+  }) async {
+    if (Platform.isAndroid) {
+      return await _extractSegmentsOnAndroid(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        segments: segments,
+      );
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return await _extractSegmentsWithFFmpeg(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        segments: segments,
+      );
+    } else {
+      throw UnsupportedError('Platform not supported');
+    }
+  }
+
+  /// Android implementation for multiple segments
+  static Future<Map<String, dynamic>> _extractSegmentsOnAndroid({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioSegment> segments,
+  }) async {
+    try {
+      final segmentsList = segments.map((s) => s.toMap()).toList();
+
+      final result = await _channel.invokeMethod('extractAudioSegments', {
+        'inputPath': inputPath,
+        'outputPath': outputPath,
+        'segments': segmentsList,
+      });
+
+      return {
+        'success': result['success'] as bool,
+        'message': result['message'] as String,
+        'outputPath': result['outputPath'] as String?,
+      };
+    } on PlatformException catch (e) {
+      return {
+        'success': false,
+        'message': 'Android extraction error: ${e.message}',
+        'outputPath': null,
+      };
+    }
+  }
+
+  /// Desktop implementation for multiple segments using FFmpeg
+  static Future<Map<String, dynamic>> _extractSegmentsWithFFmpeg({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioSegment> segments,
+  }) async {
+    try {
+      // Create a temp directory for segment files
+      final tempDir = Directory.systemTemp.createTempSync('mp3_extract_');
+      final segmentFiles = <String>[];
+
+      try {
+        // Extract each segment
+        for (int i = 0; i < segments.length; i++) {
+          final segment = segments[i];
+          final segmentPath =
+              '${tempDir.path}${Platform.pathSeparator}segment_$i.mp3';
+
+          final arguments = [
+            '-i',
+            inputPath,
+            '-ss',
+            segment.startPosition.toString(),
+            '-to',
+            segment.endPosition.toString(),
+            '-acodec',
+            'libmp3lame',
+            '-b:a',
+            '192k',
+            segmentPath,
+            '-y',
+          ];
+
+          final result = await Process.run('ffmpeg', arguments);
+          if (result.exitCode != 0) {
+            return {
+              'success': false,
+              'message': 'Failed to extract segment ${i + 1}: ${result.stderr}',
+              'outputPath': null,
+            };
+          }
+
+          segmentFiles.add(segmentPath);
+
+          // Add silence if needed
+          if (segment.silenceDuration > 0) {
+            final silencePath =
+                '${tempDir.path}${Platform.pathSeparator}silence_$i.mp3';
+
+            final silenceArgs = [
+              '-f',
+              'lavfi',
+              '-i',
+              'anullsrc=r=44100:cl=stereo',
+              '-t',
+              segment.silenceDuration.toString(),
+              '-acodec',
+              'libmp3lame',
+              '-b:a',
+              '192k',
+              silencePath,
+              '-y',
+            ];
+
+            final silenceResult = await Process.run('ffmpeg', silenceArgs);
+            if (silenceResult.exitCode == 0) {
+              segmentFiles.add(silencePath);
+            }
+          }
+        }
+
+        // Create concat file
+        final concatFilePath =
+            '${tempDir.path}${Platform.pathSeparator}concat.txt';
+        final concatFile = File(concatFilePath);
+        final concatContent = segmentFiles.map((f) => "file '$f'").join('\n');
+        await concatFile.writeAsString(concatContent);
+
+        // Concatenate all segments
+        final concatArgs = [
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          concatFilePath,
+          '-acodec',
+          'copy',
+          outputPath,
+          '-y',
+        ];
+
+        final concatResult = await Process.run('ffmpeg', concatArgs);
+
+        if (concatResult.exitCode == 0) {
+          return {
+            'success': true,
+            'message': 'Extraction successful',
+            'outputPath': outputPath,
+          };
+        } else {
+          return {
+            'success': false,
+            'message': 'Failed to concatenate segments: ${concatResult.stderr}',
+            'outputPath': null,
+          };
+        }
+      } finally {
+        // Clean up temp directory
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (e) {
+          logger.i('Failed to clean up temp directory: $e');
+        }
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'FFmpeg error: $e',
+        'outputPath': null,
+      };
     }
   }
 

@@ -446,5 +446,178 @@ class AudioExtractorPlugin {
                 }
             }
         }
+
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "extractAudio" -> {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val response = extractAudioInBackground(call)
+                        withContext(Dispatchers.Main) {
+                            result.success(response)
+                        }
+                    }
+                }
+                "extractAudioSegments" -> {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val response = extractMultipleSegments(call)
+                        withContext(Dispatchers.Main) {
+                            result.success(response)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }        
+
+        private suspend fun extractMultipleSegments(call: MethodCall): Map<String, Any?> = withContext(Dispatchers.IO) {
+            try {
+                val inputPath = call.argument<String>("inputPath")!!
+                val outputPath = call.argument<String>("outputPath")!!
+                val segmentsList = call.argument<List<Map<String, Any>>>("segments")!!
+                
+                Log.d(TAG, "Extracting ${segmentsList.size} segments")
+                
+                val tempDir = File(outputPath).parentFile
+                val segmentFiles = mutableListOf<String>()
+                
+                try {
+                    // Extract each segment
+                    for ((index, segmentMap) in segmentsList.withIndex()) {
+                        val startTime = (segmentMap["startPosition"] as Double) * 1_000_000
+                        val endTime = (segmentMap["endPosition"] as Double) * 1_000_000
+                        val silenceDuration = (segmentMap["silenceDuration"] as? Double ?: 0.0)
+                        
+                        val tempM4aPath = "${tempDir}/segment_${index}_temp.m4a"
+                        val tempMp3Path = "${tempDir}/segment_${index}.mp3"
+                        
+                        // Extract segment to M4A
+                        val extractSuccess = extractAudioSegment(inputPath, tempM4aPath, startTime.toLong(), endTime.toLong())
+                        
+                        if (!extractSuccess) {
+                            return@withContext mapOf(
+                                "success" to false,
+                                "message" to "Failed to extract segment ${index + 1}",
+                                "outputPath" to null
+                            )
+                        }
+                        
+                        // Convert to MP3
+                        val convertSuccess = convertM4aToMp3Simple(tempM4aPath, tempMp3Path)
+                        File(tempM4aPath).delete()
+                        
+                        if (!convertSuccess) {
+                            return@withContext mapOf(
+                                "success" to false,
+                                "message" to "Failed to convert segment ${index + 1}",
+                                "outputPath" to null
+                            )
+                        }
+                        
+                        segmentFiles.add(tempMp3Path)
+                        
+                        // Add silence if needed
+                        if (silenceDuration > 0) {
+                            val silencePath = "${tempDir}/silence_${index}.mp3"
+                            val silenceSuccess = createSilence(silencePath, silenceDuration)
+                            if (silenceSuccess) {
+                                segmentFiles.add(silencePath)
+                            }
+                        }
+                    }
+                    
+                    // Combine all segments
+                    val combineSuccess = combineMP3Files(segmentFiles, outputPath)
+                    
+                    // Clean up temp files
+                    segmentFiles.forEach { File(it).delete() }
+                    
+                    if (combineSuccess) {
+                        mapOf(
+                            "success" to true,
+                            "message" to "Extraction successful",
+                            "outputPath" to outputPath
+                        )
+                    } else {
+                        mapOf(
+                            "success" to false,
+                            "message" to "Failed to combine segments",
+                            "outputPath" to null
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Clean up on error
+                    segmentFiles.forEach { File(it).deleteOnExit() }
+                    throw e
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error extracting multiple segments", e)
+                mapOf(
+                    "success" to false,
+                    "message" to "Error: ${e.message}",
+                    "outputPath" to null
+                )
+            }
+        }
+
+        private fun createSilence(outputPath: String, durationSeconds: Double): Boolean {
+            try {
+                // Create a simple MP3 file with silence
+                // For simplicity, we'll create a very small MP3 with minimum data
+                // In practice, you might want to generate actual silence audio
+                val lame = AndroidLame(
+                    LameBuilder()
+                        .setInSampleRate(44100)
+                        .setOutChannels(2)
+                        .setOutBitrate(192)
+                        .setOutSampleRate(44100)
+                        .setQuality(5)
+                )
+                
+                val outputStream = FileOutputStream(outputPath)
+                val mp3Buffer = ByteArray(8192)
+                
+                val sampleCount = (44100 * durationSeconds).toInt()
+                val silentSamples = ShortArray(sampleCount) { 0 }
+                
+                val left = ShortArray(sampleCount / 2) { 0 }
+                val right = ShortArray(sampleCount / 2) { 0 }
+                
+                val bytesEncoded = lame.encode(left, right, left.size, mp3Buffer)
+                if (bytesEncoded > 0) {
+                    outputStream.write(mp3Buffer, 0, bytesEncoded)
+                }
+                
+                val flushBytes = lame.flush(mp3Buffer)
+                if (flushBytes > 0) {
+                    outputStream.write(mp3Buffer, 0, flushBytes)
+                }
+                
+                outputStream.close()
+                lame.close()
+                
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating silence", e)
+                return false
+            }
+        }
+
+        private fun combineMP3Files(inputFiles: List<String>, outputPath: String): Boolean {
+            try {
+                val outputStream = FileOutputStream(outputPath)
+                
+                for (inputFile in inputFiles) {
+                    val inputStream = File(inputFile).inputStream()
+                    inputStream.copyTo(outputStream)
+                    inputStream.close()
+                }
+                
+                outputStream.close()
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error combining MP3 files", e)
+                return false
+            }
+        }
     }
 }

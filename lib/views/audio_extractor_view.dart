@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import '../models/audio_segment.dart';
+import '../widgets/add_segment_dialog.dart';
 import '../constants.dart';
 import '../viewmodels/audio_extractor_vm.dart';
 import '../viewmodels/audio_player_vm.dart';
@@ -44,16 +46,8 @@ class AudioExtractorView extends StatefulWidget {
 }
 
 class _AudioExtractorViewState extends State<AudioExtractorView> {
-  // Controllers for the text fields - creating them once in the state
-  final TextEditingController _startController = TextEditingController();
-  final TextEditingController _endController = TextEditingController();
-  bool _startFieldInitialized = false;
-  bool _endFieldInitialized = false;
-
   @override
   void dispose() {
-    _startController.dispose();
-    _endController.dispose();
     super.dispose();
   }
 
@@ -70,7 +64,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         final path = result.files.single.path!;
         final name = result.files.single.name;
 
-        double duration = await AudioExtractorService.getAudioDuration(filePath:  path);
+        double duration = await AudioExtractorService.getAudioDuration(
+          filePath: path,
+        );
 
         // Then set the audio file
         audioExtractorVM.setAudioFile(
@@ -78,12 +74,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           name: name,
           duration: duration,
         );
-
-        // Reset initialized flags to update the text fields with new values
-        setState(() {
-          _startFieldInitialized = false;
-          _endFieldInitialized = false;
-        });
       }
     } catch (e) {
       audioExtractorVM.setError('Error selecting file: $e');
@@ -101,38 +91,31 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       return;
     }
 
-    // Set processing state
-    audioExtractorVM.startProcessing();
+    if (audioExtractorVM.segments.isEmpty) {
+      audioExtractorVM.setError('Please add at least one segment');
+      return;
+    }
 
     try {
-      // Create suggested filename with improved formatting
+      // Create suggested filename
       final String baseFileName =
           audioExtractorVM.audioFile.name?.split('.').first ?? 'extract';
 
-      // Format start and end positions for filename
-      final String startFormatted = _formatTimePosition(
-        seconds: audioExtractorVM.startPosition,
-      ).replaceAll(':', '-');
-      final String endFormatted = _formatTimePosition(
-        seconds: audioExtractorVM.endPosition,
-      ).replaceAll(':', '-');
-
       final String suggestedFileName =
-          '$baseFileName from $startFormatted to $endFormatted.mp3';
+          audioExtractorVM.segments.length == 1
+              ? '$baseFileName from ${_formatTimePosition(seconds: audioExtractorVM.segments[0].startPosition)} to ${_formatTimePosition(seconds: audioExtractorVM.segments[0].endPosition)}.mp3'
+                  .replaceAll(':', '-')
+              : '${baseFileName}_${audioExtractorVM.segments.length}_segments.mp3';
 
       // Show file picker to choose save location
-      String? outputPath;
-
-      // For desktop platforms, use FilePicker to select save location
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
       if (selectedDirectory == null) {
-        // User canceled the picker
         audioExtractorVM.setError('Save location selection canceled');
         return;
       }
 
-      outputPath =
+      final String outputPath =
           '$selectedDirectory${Platform.pathSeparator}$suggestedFileName';
 
       await audioExtractorVM.extractMP3(outputPath);
@@ -196,55 +179,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
   }
 
-  // Safely update text controller with formatted time
-  void _safeUpdateController(TextEditingController controller, String newText) {
-    if (controller.text != newText) {
-      final currentSelection = controller.selection;
-      controller.text = newText;
-
-      // Try to restore cursor position if possible
-      if (currentSelection.start <= newText.length) {
-        controller.selection = currentSelection;
-      }
-    }
-  }
-
-  // Process the input and update the view model
-  void _processTimeInput(
-    TextEditingController controller,
-    bool isStart,
-    AudioExtractorVM audioExtractorVM,
-  ) {
-    final newValueSeconds = parseTimeInput(controller.text);
-
-    if (isStart) {
-      // For start position
-      if (newValueSeconds >= 0 &&
-          newValueSeconds < audioExtractorVM.endPosition &&
-          newValueSeconds <= audioExtractorVM.audioFile.duration) {
-        audioExtractorVM.startPosition = newValueSeconds;
-      }
-
-      // Update the display with the model's value (which may have been validated)
-      _safeUpdateController(
-        controller,
-        _formatTimePosition(seconds: audioExtractorVM.startPosition),
-      );
-    } else {
-      // For end position
-      if (newValueSeconds > audioExtractorVM.startPosition &&
-          newValueSeconds <= audioExtractorVM.audioFile.duration) {
-        audioExtractorVM.endPosition = newValueSeconds;
-      }
-
-      // Update the display with the model's value (which may have been validated)
-      _safeUpdateController(
-        controller,
-        _formatTimePosition(seconds: audioExtractorVM.endPosition),
-      );
-    }
-  }
-
   // Load and play extracted MP3 with error handling
   Future<void> _playExtractedFile(BuildContext context, String filePath) async {
     final audioPlayerVM = Provider.of<AudioPlayerVM>(context, listen: false);
@@ -253,7 +187,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     try {
-      await audioPlayerVM.loadFile(filePath:  filePath);
+      await audioPlayerVM.loadFile(filePath: filePath);
       if (!audioPlayerVM.hasError) {
         await audioPlayerVM.togglePlay();
       } else {
@@ -289,6 +223,97 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     );
   }
 
+  Future<void> _showAddSegmentDialog(
+    BuildContext context,
+    AudioExtractorVM vm,
+  ) async {
+    final segment = await showDialog<AudioSegment>(
+      context: context,
+      builder:
+          (context) => AddSegmentDialog(maxDuration: vm.audioFile.duration),
+    );
+
+    if (segment != null) {
+      vm.addSegment(segment);
+    }
+  }
+
+  Future<void> _showEditSegmentDialog(
+    BuildContext context,
+    AudioExtractorVM vm,
+    int index,
+    AudioSegment segment,
+  ) async {
+    final updatedSegment = await showDialog<AudioSegment>(
+      context: context,
+      builder:
+          (context) => AddSegmentDialog(
+            maxDuration: vm.audioFile.duration,
+            existingSegment: segment,
+          ),
+    );
+
+    if (updatedSegment != null) {
+      vm.updateSegment(index, updatedSegment);
+    }
+  }
+
+  void _confirmDeleteSegment(
+    BuildContext context,
+    AudioExtractorVM vm,
+    int index,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Segment'),
+            content: const Text(
+              'Are you sure you want to delete this segment?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  vm.removeSegment(index);
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _confirmClearSegments(BuildContext context, AudioExtractorVM vm) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Clear All Segments'),
+            content: const Text('Are you sure you want to clear all segments?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  vm.clearSegments();
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Clear All'),
+              ),
+            ],
+          ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -307,23 +332,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         padding: const EdgeInsets.all(16.0),
         child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
           builder: (context, audioExtractorVM, audioPlayerVM, child) {
-            // Initialize controllers with current values, but only once
-            if (!_startFieldInitialized &&
-                audioExtractorVM.audioFile.isSelected) {
-              _startController.text = _formatTimePosition(
-                seconds: audioExtractorVM.startPosition,
-              );
-              _startFieldInitialized = true;
-            }
-
-            if (!_endFieldInitialized &&
-                audioExtractorVM.audioFile.isSelected) {
-              _endController.text = _formatTimePosition(
-                seconds: audioExtractorVM.endPosition,
-              );
-              _endFieldInitialized = true;
-            }
-
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -336,149 +344,142 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   child: const Text('Select MP3 File'),
                 ),
                 const SizedBox(height: 16),
-                if (audioExtractorVM.audioFile.isSelected) ...[
-                  Text(
-                    'Selected File: ${audioExtractorVM.audioFile.name}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Duration: ${_formatTimePosition(seconds: audioExtractorVM.audioFile.duration)}',
-                    style: const TextStyle(fontStyle: FontStyle.italic),
-                  ),
-                  const SizedBox(height: 16),
-                  // Start position input field
-                  Row(
-                    children: [
-                      const Text('Start Position: '),
-                      SizedBox(
-                        width: 100,
-                        child: Focus(
-                          onFocusChange: (hasFocus) {
-                            if (!hasFocus) {
-                              // When focus is lost, parse the value and update the model
-                              _processTimeInput(
-                                _startController,
-                                true,
-                                audioExtractorVM,
-                              );
-                            }
-                          },
-                          child: TextField(
-                            controller: _startController,
-                            inputFormatters: [TimeTextInputFormatter()],
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              hintText: '0:00.0',
-                              helperText: 'h:mm:ss.t',
-                              helperStyle: TextStyle(fontSize: 9),
-                            ),
-                            // Add an onChanged handler to update the model immediately
-                            onChanged: (value) {
-                              // Don't reformat during typing, but do update the model
-                              double newValueSeconds = parseTimeInput(value);
-                              if (newValueSeconds >= 0 &&
-                                  newValueSeconds <
-                                      audioExtractorVM.endPosition &&
-                                  newValueSeconds <=
-                                      audioExtractorVM.audioFile.duration) {
-                                audioExtractorVM.startPosition =
-                                    newValueSeconds;
-                              }
-                            },
-                            onSubmitted: (value) {
-                              _processTimeInput(
-                                _startController,
-                                true,
-                                audioExtractorVM,
-                              );
-                            },
+                // Segments section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Segments (${audioExtractorVM.segmentCount})',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed:
+                          () =>
+                              _showAddSegmentDialog(context, audioExtractorVM),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Segment'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                if (audioExtractorVM.segments.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'No segments added yet.\nClick "Add Segment" to get started.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: audioExtractorVM.segments.length,
+                      itemBuilder: (context, index) {
+                        final segment = audioExtractorVM.segments[index];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
                           ),
+                          child: ListTile(
+                            leading: CircleAvatar(child: Text('${index + 1}')),
+                            title: Text(
+                              '${_formatTimePosition(seconds: segment.startPosition)} → ${_formatTimePosition(seconds: segment.endPosition)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Duration: ${_formatTimePosition(seconds: segment.duration)}'
+                              '${segment.silenceDuration > 0 ? ' + ${_formatTimePosition(seconds: segment.silenceDuration)} silence' : ''}',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, size: 20),
+                                  onPressed:
+                                      () => _showEditSegmentDialog(
+                                        context,
+                                        audioExtractorVM,
+                                        index,
+                                        segment,
+                                      ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed:
+                                      () => _confirmDeleteSegment(
+                                        context,
+                                        audioExtractorVM,
+                                        index,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (audioExtractorVM.segments.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Total: ${_formatTimePosition(seconds: audioExtractorVM.totalDuration)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextButton.icon(
+                        onPressed:
+                            () => _confirmClearSegments(
+                              context,
+                              audioExtractorVM,
+                            ),
+                        icon: const Icon(Icons.clear_all, size: 18),
+                        label: const Text('Clear All'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
                         ),
                       ),
                     ],
-                  ),
-                  // End position input field
-                  Row(
-                    children: [
-                      const Text('End Position:   '),
-                      SizedBox(
-                        width: 100,
-                        child: Focus(
-                          onFocusChange: (hasFocus) {
-                            if (!hasFocus) {
-                              // When focus is lost, parse the value and update the model
-                              _processTimeInput(
-                                _endController,
-                                false,
-                                audioExtractorVM,
-                              );
-                            }
-                          },
-                          child: TextField(
-                            controller: _endController,
-                            inputFormatters: [TimeTextInputFormatter()],
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              hintText: '0:00.0',
-                              helperText: 'h:mm:ss.t',
-                              helperStyle: TextStyle(fontSize: 9),
-                            ),
-                            // Add an onChanged handler to update the model immediately
-                            onChanged: (value) {
-                              // Don't reformat during typing, but do update the model
-                              double newValueSeconds = parseTimeInput(value);
-                              if (newValueSeconds >
-                                      audioExtractorVM.startPosition &&
-                                  newValueSeconds <=
-                                      audioExtractorVM.audioFile.duration) {
-                                audioExtractorVM.endPosition = newValueSeconds;
-                              }
-                            },
-                            onSubmitted: (value) {
-                              _processTimeInput(
-                                _endController,
-                                false,
-                                audioExtractorVM,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed:
-                        audioExtractorVM.extractionResult.isProcessing
-                            ? null
-                            : () {
-                              audioPlayerVM.isLoaded = false;
-
-                              // Parse the current text field values once more before extraction
-                              final startSeconds = parseTimeInput(
-                                _startController.text,
-                              );
-                              if (startSeconds >= 0 &&
-                                  startSeconds < audioExtractorVM.endPosition &&
-                                  startSeconds <=
-                                      audioExtractorVM.audioFile.duration) {
-                                audioExtractorVM.startPosition = startSeconds;
-                              }
-
-                              final endSeconds = parseTimeInput(
-                                _endController.text,
-                              );
-                              if (endSeconds > audioExtractorVM.startPosition &&
-                                  endSeconds <=
-                                      audioExtractorVM.audioFile.duration) {
-                                audioExtractorVM.endPosition = endSeconds;
-                              }
-
-                              _extractMP3(context: context);
-                            },
-                    child: const Text('Extract MP3'),
                   ),
                 ],
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed:
+                      audioExtractorVM.extractionResult.isProcessing ||
+                              audioExtractorVM.segments.isEmpty
+                          ? null
+                          : () {
+                            audioPlayerVM.isLoaded = false;
+                            _extractMP3(context: context);
+                          },
+                  child: const Text('Extract MP3'),
+                ),
                 const SizedBox(height: 16),
                 if (audioExtractorVM.extractionResult.isProcessing)
                   const Center(child: CircularProgressIndicator()),
@@ -576,7 +577,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             child: Slider(
               value: audioPlayerVM.progressPercent.clamp(0.0, 1.0),
               onChanged: (value) {
-                audioPlayerVM.seekByPercentage(percentage:  value);
+                audioPlayerVM.seekByPercentage(percentage: value);
               },
             ),
           ),
