@@ -332,193 +332,195 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         padding: const EdgeInsets.all(16.0),
         child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
           builder: (context, audioExtractorVM, audioPlayerVM, child) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ElevatedButton(
-                  onPressed:
-                      () => _pickMP3File(
-                        context: context,
-                        audioExtractorVM: audioExtractorVM,
-                      ),
-                  child: const Text('Select MP3 File'),
-                ),
-                const SizedBox(height: 16),
-                // Segments section
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Segments (${audioExtractorVM.segmentCount})',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed:
-                          () =>
-                              _showAddSegmentDialog(context, audioExtractorVM),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add Segment'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                if (audioExtractorVM.segments.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'No segments added yet.\nClick "Add Segment" to get started.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: audioExtractorVM.segments.length,
-                      itemBuilder: (context, index) {
-                        final segment = audioExtractorVM.segments[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          child: ListTile(
-                            leading: CircleAvatar(child: Text('${index + 1}')),
-                            title: Text(
-                              '${_formatTimePosition(seconds: segment.startPosition)} → ${_formatTimePosition(seconds: segment.endPosition)}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Duration: ${_formatTimePosition(seconds: segment.duration)}'
-                              '${segment.silenceDuration > 0 ? ' + ${_formatTimePosition(seconds: segment.silenceDuration)} silence' : ''}',
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 20),
-                                  onPressed:
-                                      () => _showEditSegmentDialog(
-                                        context,
-                                        audioExtractorVM,
-                                        index,
-                                        segment,
-                                      ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    size: 20,
-                                    color: Colors.red,
-                                  ),
-                                  onPressed:
-                                      () => _confirmDeleteSegment(
-                                        context,
-                                        audioExtractorVM,
-                                        index,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton(
+                    onPressed:
+                        () => _pickMP3File(
+                          context: context,
+                          audioExtractorVM: audioExtractorVM,
+                        ),
+                    child: const Text('Select MP3 File'),
                   ),
-
-                if (audioExtractorVM.segments.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
+                  // Segments section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Total: ${_formatTimePosition(seconds: audioExtractorVM.totalDuration)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      TextButton.icon(
-                        onPressed:
-                            () => _confirmClearSegments(
-                              context,
-                              audioExtractorVM,
-                            ),
-                        icon: const Icon(Icons.clear_all, size: 18),
-                        label: const Text('Clear All'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
+                        'Segments (${audioExtractorVM.segmentCount})',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed:
+                            () =>
+                                _showAddSegmentDialog(context, audioExtractorVM),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Segment'),
                       ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed:
-                      audioExtractorVM.extractionResult.isProcessing ||
-                              audioExtractorVM.segments.isEmpty
-                          ? null
-                          : () {
-                            audioPlayerVM.isLoaded = false;
-                            _extractMP3(context: context);
-                          },
-                  child: const Text('Extract MP3'),
-                ),
-                const SizedBox(height: 16),
-                if (audioExtractorVM.extractionResult.isProcessing)
-                  const Center(child: CircularProgressIndicator()),
-                if (audioExtractorVM.extractionResult.hasMessage)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: Text(
-                      audioExtractorVM.extractionResult.message,
-                      style: TextStyle(
-                        color:
-                            audioExtractorVM.extractionResult.isError
-                                ? Colors.red
-                                : audioExtractorVM.extractionResult.isSuccess
-                                ? Colors.green[700]
-                                : Colors.black,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                  const SizedBox(height: 8),
+              
+                  if (audioExtractorVM.segments.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'No segments added yet.\nClick "Add Segment" to get started.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: audioExtractorVM.segments.length,
+                        itemBuilder: (context, index) {
+                          final segment = audioExtractorVM.segments[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(child: Text('${index + 1}')),
+                              title: Text(
+                                '${_formatTimePosition(seconds: segment.startPosition)} → ${_formatTimePosition(seconds: segment.endPosition)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Duration: ${_formatTimePosition(seconds: segment.duration)}'
+                                '${segment.silenceDuration > 0 ? ' + ${_formatTimePosition(seconds: segment.silenceDuration)} silence' : ''}',
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 20),
+                                    onPressed:
+                                        () => _showEditSegmentDialog(
+                                          context,
+                                          audioExtractorVM,
+                                          index,
+                                          segment,
+                                        ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      size: 20,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed:
+                                        () => _confirmDeleteSegment(
+                                          context,
+                                          audioExtractorVM,
+                                          index,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
+              
+                  if (audioExtractorVM.segments.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total: ${_formatTimePosition(seconds: audioExtractorVM.totalDuration)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextButton.icon(
+                          onPressed:
+                              () => _confirmClearSegments(
+                                context,
+                                audioExtractorVM,
+                              ),
+                          icon: const Icon(Icons.clear_all, size: 18),
+                          label: const Text('Clear All'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed:
+                        audioExtractorVM.extractionResult.isProcessing ||
+                                audioExtractorVM.segments.isEmpty
+                            ? null
+                            : () {
+                              audioPlayerVM.isLoaded = false;
+                              _extractMP3(context: context);
+                            },
+                    child: const Text('Extract MP3'),
                   ),
-
-                // Audio Player Section - Only visible when extraction is successful
-                if (audioExtractorVM.extractionResult.isSuccess &&
-                    audioExtractorVM.extractionResult.outputPath != null) ...[
-                  const Divider(height: 32),
-                  const Text(
-                    'Audio Player',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Show player UI
-                  _buildAudioPlayerControls(
-                    context: context,
-                    audioExtractorVM: audioExtractorVM,
-                    audioPlayerVM: audioPlayerVM,
-                  ),
+                  const SizedBox(height: 16),
+                  if (audioExtractorVM.extractionResult.isProcessing)
+                    const Center(child: CircularProgressIndicator()),
+                  if (audioExtractorVM.extractionResult.hasMessage)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Text(
+                        audioExtractorVM.extractionResult.message,
+                        style: TextStyle(
+                          color:
+                              audioExtractorVM.extractionResult.isError
+                                  ? Colors.red
+                                  : audioExtractorVM.extractionResult.isSuccess
+                                  ? Colors.green[700]
+                                  : Colors.black,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+              
+                  // Audio Player Section - Only visible when extraction is successful
+                  if (audioExtractorVM.extractionResult.isSuccess &&
+                      audioExtractorVM.extractionResult.outputPath != null) ...[
+                    const Divider(height: 32),
+                    const Text(
+                      'Audio Player',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+              
+                    // Show player UI
+                    _buildAudioPlayerControls(
+                      context: context,
+                      audioExtractorVM: audioExtractorVM,
+                      audioPlayerVM: audioPlayerVM,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             );
           },
         ),

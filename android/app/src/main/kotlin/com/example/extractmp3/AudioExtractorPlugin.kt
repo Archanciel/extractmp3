@@ -34,9 +34,16 @@ class AudioExtractorPlugin {
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "extractAudio" -> {
-                        // Run extraction in background thread
                         CoroutineScope(Dispatchers.IO).launch {
                             val response = extractAudioInBackground(call)
+                            withContext(Dispatchers.Main) {
+                                result.success(response)
+                            }
+                        }
+                    }
+                    "extractAudioSegments" -> {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val response = extractMultipleSegments(call)
                             withContext(Dispatchers.Main) {
                                 result.success(response)
                             }
@@ -156,6 +163,154 @@ class AudioExtractorPlugin {
             }
         }
         
+        private suspend fun extractMultipleSegments(call: MethodCall): Map<String, Any?> = withContext(Dispatchers.IO) {
+            try {
+                val inputPath = call.argument<String>("inputPath")!!
+                val outputPath = call.argument<String>("outputPath")!!
+                val segmentsList = call.argument<List<Map<String, Any>>>("segments")!!
+                
+                Log.d(TAG, "=== Starting multi-segment extraction ===")
+                Log.d(TAG, "Input: $inputPath")
+                Log.d(TAG, "Output: $outputPath")
+                Log.d(TAG, "Number of segments: ${segmentsList.size}")
+                
+                val tempDir = File(outputPath).parentFile
+                val segmentFiles = mutableListOf<String>()
+                
+                try {
+                    // Extract each segment
+                    for ((index, segmentMap) in segmentsList.withIndex()) {
+                        Log.d(TAG, "Processing segment ${index + 1}/${segmentsList.size}")
+                        
+                        val startTime = (segmentMap["startPosition"] as Double) * 1_000_000
+                        val endTime = (segmentMap["endPosition"] as Double) * 1_000_000
+                        val silenceDuration = (segmentMap["silenceDuration"] as? Double ?: 0.0)
+                        
+                        Log.d(TAG, "Segment $index: ${startTime/1_000_000}s to ${endTime/1_000_000}s")
+                        
+                        val tempM4aPath = "${tempDir}/segment_${index}_temp.m4a"
+                        val tempMp3Path = "${tempDir}/segment_${index}.mp3"
+                        
+                        // Extract segment to M4A
+                        Log.d(TAG, "Extracting segment $index to M4A...")
+                        val extractSuccess = extractAudioSegment(inputPath, tempM4aPath, startTime.toLong(), endTime.toLong())
+                        
+                        if (!extractSuccess) {
+                            Log.e(TAG, "Failed to extract segment $index")
+                            // Clean up
+                            segmentFiles.forEach { File(it).delete() }
+                            return@withContext mapOf(
+                                "success" to false,
+                                "message" to "Failed to extract segment ${index + 1}",
+                                "outputPath" to null
+                            )
+                        }
+                        
+                        // Check M4A file
+                        val m4aFile = File(tempM4aPath)
+                        Log.d(TAG, "M4A file size: ${m4aFile.length()} bytes")
+                        
+                        if (!m4aFile.exists() || m4aFile.length() < 1000) {
+                            Log.e(TAG, "M4A file too small or missing")
+                            m4aFile.delete()
+                            segmentFiles.forEach { File(it).delete() }
+                            return@withContext mapOf(
+                                "success" to false,
+                                "message" to "Segment ${index + 1} file is invalid",
+                                "outputPath" to null
+                            )
+                        }
+                        
+                        // Convert to MP3
+                        Log.d(TAG, "Converting segment $index to MP3...")
+                        val convertSuccess = convertM4aToMp3Simple(tempM4aPath, tempMp3Path)
+                        m4aFile.delete()
+                        
+                        if (!convertSuccess) {
+                            Log.e(TAG, "Failed to convert segment $index to MP3")
+                            segmentFiles.forEach { File(it).delete() }
+                            return@withContext mapOf(
+                                "success" to false,
+                                "message" to "Failed to convert segment ${index + 1} to MP3",
+                                "outputPath" to null
+                            )
+                        }
+                        
+                        // Check MP3 file
+                        val mp3File = File(tempMp3Path)
+                        Log.d(TAG, "MP3 file size: ${mp3File.length()} bytes")
+                        
+                        segmentFiles.add(tempMp3Path)
+                        
+                        // Add silence if needed
+                        if (silenceDuration > 0) {
+                            Log.d(TAG, "Adding ${silenceDuration}s silence after segment $index")
+                            val silencePath = "${tempDir}/silence_${index}.mp3"
+                            val silenceSuccess = createSilence(silencePath, silenceDuration)
+                            if (silenceSuccess) {
+                                segmentFiles.add(silencePath)
+                                Log.d(TAG, "Silence file created: ${File(silencePath).length()} bytes")
+                            } else {
+                                Log.w(TAG, "Failed to create silence file")
+                            }
+                        }
+                        
+                        Log.d(TAG, "Segment $index completed successfully")
+                    }
+                    
+                    Log.d(TAG, "All segments extracted. Total files to combine: ${segmentFiles.size}")
+                    
+                    // Combine all segments
+                    Log.d(TAG, "Combining MP3 files...")
+                    val combineSuccess = combineMP3Files(segmentFiles, outputPath)
+                    
+                    // Clean up temp files
+                    Log.d(TAG, "Cleaning up temp files...")
+                    var deletedCount = 0
+                    segmentFiles.forEach { 
+                        if (File(it).delete()) deletedCount++
+                    }
+                    Log.d(TAG, "Deleted $deletedCount temp files")
+                    
+                    if (combineSuccess) {
+                        val finalFile = File(outputPath)
+                        Log.d(TAG, "=== Extraction completed successfully ===")
+                        Log.d(TAG, "Final file size: ${finalFile.length()} bytes")
+                        mapOf(
+                            "success" to true,
+                            "message" to "Extraction successful",
+                            "outputPath" to outputPath
+                        )
+                    } else {
+                        Log.e(TAG, "Failed to combine segments")
+                        mapOf(
+                            "success" to false,
+                            "message" to "Failed to combine segments",
+                            "outputPath" to null
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception during extraction", e)
+                    // Clean up on error
+                    segmentFiles.forEach { 
+                        try {
+                            File(it).delete()
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Error deleting temp file: $it", ex)
+                        }
+                    }
+                    throw e
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error extracting multiple segments", e)
+                mapOf(
+                    "success" to false,
+                    "message" to "Error: ${e.message}",
+                    "outputPath" to null
+                )
+            }
+        }        
+
         private fun extractAudioSegment(
             inputPath: String,
             outputPath: String,
@@ -168,6 +323,7 @@ class AudioExtractorPlugin {
             var muxer: MediaMuxer? = null
             
             try {
+                Log.d(TAG, "extractAudioSegment: Setting up extractor")
                 extractor.setDataSource(inputPath)
                 
                 var audioTrackIndex = -1
@@ -185,6 +341,7 @@ class AudioExtractorPlugin {
                 }
                 
                 if (audioTrackIndex == -1 || inputFormat == null) {
+                    Log.e(TAG, "No audio track found")
                     return false
                 }
                 
@@ -195,9 +352,12 @@ class AudioExtractorPlugin {
                 val channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                 val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: ""
                 
+                Log.d(TAG, "Audio format: $sampleRate Hz, $channelCount channels, $mime")
+                
                 decoder = MediaCodec.createDecoderByType(mime)
                 decoder.configure(inputFormat, null, null, 0)
                 decoder.start()
+                Log.d(TAG, "Decoder started")
                 
                 val outputFormat = MediaFormat.createAudioFormat(
                     MediaFormat.MIMETYPE_AUDIO_AAC,
@@ -211,6 +371,7 @@ class AudioExtractorPlugin {
                 encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
                 encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 encoder.start()
+                Log.d(TAG, "Encoder started")
                 
                 File(outputPath).parentFile?.mkdirs()
                 muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -222,9 +383,13 @@ class AudioExtractorPlugin {
                 val encoderBufferInfo = MediaCodec.BufferInfo()
                 
                 var extractorDone = false
+                var decoderDone = false
                 var encoderDone = false
                 
+                Log.d(TAG, "Starting processing loop")
+                
                 while (!encoderDone) {
+                    // Feed decoder
                     if (!extractorDone) {
                         val inputBufferIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
                         if (inputBufferIndex >= 0) {
@@ -235,6 +400,7 @@ class AudioExtractorPlugin {
                             if (sampleSize < 0 || presentationTimeUs > endTimeUs) {
                                 decoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                                 extractorDone = true
+                                Log.d(TAG, "Extractor done, signaled decoder")
                             } else {
                                 decoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, presentationTimeUs, 0)
                                 extractor.advance()
@@ -242,65 +408,101 @@ class AudioExtractorPlugin {
                         }
                     }
                     
+                    // Get decoder output
                     val outputBufferIndex = decoder.dequeueOutputBuffer(decoderBufferInfo, TIMEOUT_US)
                     
                     if (outputBufferIndex >= 0) {
                         val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)
                         
+                        val isEOS = (decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        
                         if (decoderBufferInfo.size > 0 && decoderBufferInfo.presentationTimeUs >= startTimeUs) {
-                            val encoderInputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
-                            if (encoderInputBufferIndex >= 0) {
-                                val encoderInputBuffer = encoder.getInputBuffer(encoderInputBufferIndex)
+                            // Feed to encoder - wait for available buffer
+                            var encoderInputIndex = -1
+                            var attempts = 0
+                            while (encoderInputIndex < 0 && attempts < 1000) {
+                                encoderInputIndex = encoder.dequeueInputBuffer(1000)
+                                attempts++
+                            }
+                            
+                            if (encoderInputIndex >= 0) {
+                                val encoderInputBuffer = encoder.getInputBuffer(encoderInputIndex)
                                 encoderInputBuffer!!.clear()
                                 
                                 outputBuffer!!.position(decoderBufferInfo.offset)
                                 outputBuffer.limit(decoderBufferInfo.offset + decoderBufferInfo.size)
                                 encoderInputBuffer.put(outputBuffer)
                                 
-                                val flags = if ((decoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                                } else 0
+                                val flags = if (isEOS) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
                                 
                                 encoder.queueInputBuffer(
-                                    encoderInputBufferIndex,
+                                    encoderInputIndex,
                                     0,
                                     decoderBufferInfo.size,
                                     decoderBufferInfo.presentationTimeUs - startTimeUs,
                                     flags
                                 )
+                                
+                                if (isEOS) {
+                                    Log.d(TAG, "END_OF_STREAM sent to encoder")
+                                }
+                            }
+                        } else if (isEOS) {
+                            // Empty EOS buffer - still need to signal encoder
+                            var encoderInputIndex = -1
+                            var attempts = 0
+                            while (encoderInputIndex < 0 && attempts < 1000) {
+                                encoderInputIndex = encoder.dequeueInputBuffer(1000)
+                                attempts++
+                            }
+                            
+                            if (encoderInputIndex >= 0) {
+                                encoder.queueInputBuffer(encoderInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                Log.d(TAG, "Empty END_OF_STREAM sent to encoder")
                             }
                         }
                         
                         decoder.releaseOutputBuffer(outputBufferIndex, false)
+                        
+                        if (isEOS) {
+                            decoderDone = true
+                            Log.d(TAG, "Decoder done")
+                        }
                     }
                     
-                    val encoderOutputBufferIndex = encoder.dequeueOutputBuffer(encoderBufferInfo, TIMEOUT_US)
+                    // Get encoder output
+                    val encoderOutputIndex = encoder.dequeueOutputBuffer(encoderBufferInfo, TIMEOUT_US)
                     
-                    if (encoderOutputBufferIndex >= 0) {
-                        val encodedData = encoder.getOutputBuffer(encoderOutputBufferIndex)
-                        
-                        if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 && encoderBufferInfo.size > 0) {
+                    when {
+                        encoderOutputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                             if (!muxerStarted) {
-                                return false
+                                muxerTrackIndex = muxer.addTrack(encoder.outputFormat)
+                                muxer.start()
+                                muxerStarted = true
+                                Log.d(TAG, "Muxer started")
                             }
-                            encodedData!!.position(encoderBufferInfo.offset)
-                            encodedData.limit(encoderBufferInfo.offset + encoderBufferInfo.size)
-                            muxer.writeSampleData(muxerTrackIndex, encodedData, encoderBufferInfo)
                         }
-                        
-                        encoder.releaseOutputBuffer(encoderOutputBufferIndex, false)
-                        
-                        if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                            encoderDone = true
+                        encoderOutputIndex >= 0 -> {
+                            val encodedData = encoder.getOutputBuffer(encoderOutputIndex)
+                            
+                            if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 && 
+                                encoderBufferInfo.size > 0 && muxerStarted) {
+                                encodedData!!.position(encoderBufferInfo.offset)
+                                encodedData.limit(encoderBufferInfo.offset + encoderBufferInfo.size)
+                                muxer.writeSampleData(muxerTrackIndex, encodedData, encoderBufferInfo)
+                            }
+                            
+                            encoder.releaseOutputBuffer(encoderOutputIndex, false)
+                            
+                            if ((encoderBufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                                encoderDone = true
+                                Log.d(TAG, "Encoder done - extraction complete!")
+                            }
                         }
-                    } else if (encoderOutputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        if (muxerStarted) return false
-                        muxerTrackIndex = muxer.addTrack(encoder.outputFormat)
-                        muxer.start()
-                        muxerStarted = true
                     }
                 }
                 
+                Log.d(TAG, "extractAudioSegment completed successfully")
                 return true
                 
             } catch (e: Exception) {
@@ -315,12 +517,12 @@ class AudioExtractorPlugin {
                     encoder?.release()
                     muxer?.stop()
                     muxer?.release()
+                    Log.d(TAG, "Cleanup completed")
                 } catch (e: Exception) {
                     Log.e(TAG, "Cleanup error", e)
                 }
             }
         }
-        
         private fun convertM4aToMp3Simple(inputM4aPath: String, outputMp3Path: String): Boolean {
             val extractor = MediaExtractor()
             var decoder: MediaCodec? = null
@@ -447,123 +649,8 @@ class AudioExtractorPlugin {
             }
         }
 
-        channel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "extractAudio" -> {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val response = extractAudioInBackground(call)
-                        withContext(Dispatchers.Main) {
-                            result.success(response)
-                        }
-                    }
-                }
-                "extractAudioSegments" -> {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val response = extractMultipleSegments(call)
-                        withContext(Dispatchers.Main) {
-                            result.success(response)
-                        }
-                    }
-                }
-                else -> result.notImplemented()
-            }
-        }        
-
-        private suspend fun extractMultipleSegments(call: MethodCall): Map<String, Any?> = withContext(Dispatchers.IO) {
-            try {
-                val inputPath = call.argument<String>("inputPath")!!
-                val outputPath = call.argument<String>("outputPath")!!
-                val segmentsList = call.argument<List<Map<String, Any>>>("segments")!!
-                
-                Log.d(TAG, "Extracting ${segmentsList.size} segments")
-                
-                val tempDir = File(outputPath).parentFile
-                val segmentFiles = mutableListOf<String>()
-                
-                try {
-                    // Extract each segment
-                    for ((index, segmentMap) in segmentsList.withIndex()) {
-                        val startTime = (segmentMap["startPosition"] as Double) * 1_000_000
-                        val endTime = (segmentMap["endPosition"] as Double) * 1_000_000
-                        val silenceDuration = (segmentMap["silenceDuration"] as? Double ?: 0.0)
-                        
-                        val tempM4aPath = "${tempDir}/segment_${index}_temp.m4a"
-                        val tempMp3Path = "${tempDir}/segment_${index}.mp3"
-                        
-                        // Extract segment to M4A
-                        val extractSuccess = extractAudioSegment(inputPath, tempM4aPath, startTime.toLong(), endTime.toLong())
-                        
-                        if (!extractSuccess) {
-                            return@withContext mapOf(
-                                "success" to false,
-                                "message" to "Failed to extract segment ${index + 1}",
-                                "outputPath" to null
-                            )
-                        }
-                        
-                        // Convert to MP3
-                        val convertSuccess = convertM4aToMp3Simple(tempM4aPath, tempMp3Path)
-                        File(tempM4aPath).delete()
-                        
-                        if (!convertSuccess) {
-                            return@withContext mapOf(
-                                "success" to false,
-                                "message" to "Failed to convert segment ${index + 1}",
-                                "outputPath" to null
-                            )
-                        }
-                        
-                        segmentFiles.add(tempMp3Path)
-                        
-                        // Add silence if needed
-                        if (silenceDuration > 0) {
-                            val silencePath = "${tempDir}/silence_${index}.mp3"
-                            val silenceSuccess = createSilence(silencePath, silenceDuration)
-                            if (silenceSuccess) {
-                                segmentFiles.add(silencePath)
-                            }
-                        }
-                    }
-                    
-                    // Combine all segments
-                    val combineSuccess = combineMP3Files(segmentFiles, outputPath)
-                    
-                    // Clean up temp files
-                    segmentFiles.forEach { File(it).delete() }
-                    
-                    if (combineSuccess) {
-                        mapOf(
-                            "success" to true,
-                            "message" to "Extraction successful",
-                            "outputPath" to outputPath
-                        )
-                    } else {
-                        mapOf(
-                            "success" to false,
-                            "message" to "Failed to combine segments",
-                            "outputPath" to null
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Clean up on error
-                    segmentFiles.forEach { File(it).deleteOnExit() }
-                    throw e
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error extracting multiple segments", e)
-                mapOf(
-                    "success" to false,
-                    "message" to "Error: ${e.message}",
-                    "outputPath" to null
-                )
-            }
-        }
-
         private fun createSilence(outputPath: String, durationSeconds: Double): Boolean {
             try {
-                // Create a simple MP3 file with silence
-                // For simplicity, we'll create a very small MP3 with minimum data
-                // In practice, you might want to generate actual silence audio
                 val lame = AndroidLame(
                     LameBuilder()
                         .setInSampleRate(44100)
@@ -577,7 +664,6 @@ class AudioExtractorPlugin {
                 val mp3Buffer = ByteArray(8192)
                 
                 val sampleCount = (44100 * durationSeconds).toInt()
-                val silentSamples = ShortArray(sampleCount) { 0 }
                 
                 val left = ShortArray(sampleCount / 2) { 0 }
                 val right = ShortArray(sampleCount / 2) { 0 }
