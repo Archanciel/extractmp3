@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/audio_segment.dart';
+import '../models/comment.dart';
+import '../services/json_data_service.dart';
 import '../constants.dart';
 import '../viewmodels/audio_extractor_vm.dart';
 import '../viewmodels/audio_player_vm.dart';
@@ -58,7 +60,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom, // Changed to custom
+        type: FileType.custom,
         allowedExtensions: ['mp3'],
       );
       if (result != null && result.files.single.path != null) {
@@ -78,6 +80,101 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       }
     } catch (e) {
       audioExtractorVM.setError('Error selecting file: $e');
+    }
+  }
+
+  /// NEW METHOD: Load segments from a comment JSON file
+  Future<void> _loadSegmentsFromCommentFile({
+    required BuildContext context,
+    required AudioExtractorVM audioExtractorVM,
+  }) async {
+    try {
+      // Check if an audio file is loaded first
+      if (audioExtractorVM.audioFile.path == null) {
+        audioExtractorVM.setError('Please select an MP3 file first');
+        return;
+      }
+
+      // Pick a JSON file
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final commentFilePath = result.files.single.path!;
+
+        // Load comments from the file
+        List<Comment> comments = JsonDataService.loadListFromFile<Comment>(
+          jsonPathFileName: commentFilePath,
+          type: Comment,
+        );
+
+        if (comments.isEmpty) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No comments found in the selected file'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        // Convert comments to segments
+        int segmentsAdded = 0;
+        int segmentsSkipped = 0;
+
+        for (Comment comment in comments) {
+          // Convert tenths of seconds to seconds
+          double startPosition = comment.commentStartPositionInTenthOfSeconds / 10.0;
+          double endPosition = comment.commentEndPositionInTenthOfSeconds / 10.0;
+
+          // Validate positions
+          if (startPosition >= 0 && 
+              endPosition > startPosition && 
+              endPosition <= audioExtractorVM.audioFile.duration) {
+            
+            AudioSegment segment = AudioSegment(
+              startPosition: startPosition,
+              endPosition: endPosition,
+              silenceDuration: 0.0, // User can edit this later
+            );
+
+            audioExtractorVM.addSegment(segment);
+            segmentsAdded++;
+          } else {
+            segmentsSkipped++;
+            debugPrint(
+              'Skipped comment "${comment.title}": Invalid positions '
+              '($startPosition - $endPosition)',
+            );
+          }
+        }
+
+        // Show feedback to user
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Loaded $segmentsAdded segment(s) from comments'
+              '${segmentsSkipped > 0 ? ' ($segmentsSkipped skipped due to invalid positions)' : ''}',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      audioExtractorVM.setError('Error loading comment file: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading comment file: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -374,7 +471,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     child: const Text('Select MP3 File'),
                   ),
                   const SizedBox(height: 16),
-                  // Segments section
+                  
+                  // Segments section header with TWO buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -385,12 +483,37 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed:
-                            () =>
-                                _showAddSegmentDialog(context, audioExtractorVM),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Segment'),
+                      // NEW: Two buttons side by side
+                      Column(
+                        children: [
+                          // Load from Comment File button
+                          ElevatedButton.icon(
+                            onPressed: audioExtractorVM.audioFile.path == null
+                                ? null
+                                : () => _loadSegmentsFromCommentFile(
+                                      context: context,
+                                      audioExtractorVM: audioExtractorVM,
+                                    ),
+                            icon: const Icon(Icons.file_open, size: 18),
+                            label: const Text('Load from Comments'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Manual Add Segment button
+                          ElevatedButton.icon(
+                            onPressed: audioExtractorVM.audioFile.path == null
+                                ? null
+                                : () => _showAddSegmentDialog(
+                                      context,
+                                      audioExtractorVM,
+                                    ),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add Manually'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -405,7 +528,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       ),
                       child: const Center(
                         child: Text(
-                          'No segments added yet.\nClick "Add Segment" to get started.',
+                          'No segments added yet.\nLoad from a comment file or add segments manually.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.grey),
                         ),
