@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_size/window_size.dart';
 import 'views/audio_extractor_view.dart';
-import '../viewmodels/audio_extractor_vm.dart';
+import 'viewmodels/audio_extractor_vm.dart';
 import 'viewmodels/audio_player_vm.dart';
 
 Future<void> main() async {
@@ -20,8 +20,6 @@ Future<void> main() async {
 /// If app runs on Windows, Linux or MacOS, set the app size
 /// and position.
 Future<void> _setWindowsAppSizeAndPosition({bool isTest = true}) async {
-  WidgetsFlutterBinding.ensureInitialized();
-
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await getScreenList().then((List<Screen> screens) {
       // Assumez que vous voulez utiliser le premier écran (principal)
