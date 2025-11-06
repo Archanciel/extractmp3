@@ -8,10 +8,10 @@ class AudioExtractorService {
   static const MethodChannel _channel = MethodChannel('audio_extractor');
   static const MethodChannel _durationChannel = MethodChannel('audio_duration');
   static final Logger logger = Logger();
-  
+
   // Constant for default silence duration between segments (in seconds)
   static const double defaultSilenceDuration = 1.0;
-  
+
   // Path to the 1-second silence MP3 asset
   static const String silenceAssetPath = 'assets/mp3/1-second-of-silence.mp3';
 
@@ -70,7 +70,7 @@ class AudioExtractorService {
   static Future<String> _copySilenceAssetToTemp(String tempDir) async {
     final silencePath = '$tempDir${Platform.pathSeparator}silence_1sec.mp3';
     final silenceFile = File(silencePath);
-    
+
     // Only copy if it doesn't already exist
     if (!silenceFile.existsSync()) {
       logger.i('📋 Copying silence asset to temp...');
@@ -81,10 +81,10 @@ class AudioExtractorService {
     } else {
       logger.i('✅ Using existing silence file');
     }
-    
+
     return silencePath;
   }
-  
+
   /// Creates silence by copying the asset file multiple times if needed
   /// For durations > 1 second, concatenates multiple copies
   static Future<String?> _createSilenceFile({
@@ -93,7 +93,7 @@ class AudioExtractorService {
     required String silenceAssetPath,
   }) async {
     logger.i('🔇 Creating ${duration}s silence using asset file...');
-    
+
     try {
       if (duration == 1.0) {
         // Simple case: just copy the 1-second file
@@ -112,18 +112,19 @@ class AudioExtractorService {
         // For more than 1 second, concatenate multiple 1-second files
         final numCopies = duration.round();
         logger.i('📝 Concatenating $numCopies copies of 1-second silence...');
-        
+
         final tempDir = File(outputPath).parent.path;
-        final concatFilePath = '$tempDir${Platform.pathSeparator}silence_concat_${DateTime.now().millisecondsSinceEpoch}.txt';
-        
+        final concatFilePath =
+            '$tempDir${Platform.pathSeparator}silence_concat_${DateTime.now().millisecondsSinceEpoch}.txt';
+
         // Create concat file with multiple references to the same silence file
         final concatContent = List.generate(
           numCopies,
           (i) => "file '${silenceAssetPath.replaceAll('\\', '/')}'",
         ).join('\n');
-        
+
         await File(concatFilePath).writeAsString(concatContent);
-        
+
         // Concatenate using FFmpeg
         final args = [
           '-f',
@@ -139,14 +140,14 @@ class AudioExtractorService {
           '-v',
           'error',
         ];
-        
+
         final result = await Process.run('ffmpeg', args);
-        
+
         // Clean up concat file
         try {
           await File(concatFilePath).delete();
         } catch (_) {}
-        
+
         if (result.exitCode == 0 && File(outputPath).existsSync()) {
           logger.i('✅ Created ${duration}s silence');
           return outputPath;
@@ -256,10 +257,10 @@ class AudioExtractorService {
       try {
         logger.i('🎬 Starting extraction of ${segments.length} segments...');
         logger.i('📂 Temp directory: ${tempDir.path}');
-        
+
         // Copy the silence asset once for reuse
         final silenceAssetPath = await _copySilenceAssetToTemp(tempDir.path);
-        
+
         // Extract each segment and add silence
         for (int i = 0; i < segments.length; i++) {
           final segment = segments[i];
@@ -291,7 +292,7 @@ class AudioExtractorService {
 
           logger.i('   🎬 Extracting segment...');
           final result = await Process.run('ffmpeg', arguments);
-          
+
           if (result.exitCode != 0) {
             logger.e('❌ Failed to extract segment ${i + 1}');
             logger.e('   stderr: ${result.stderr}');
@@ -319,7 +320,7 @@ class AudioExtractorService {
 
           // Determine silence duration
           double silenceDurationToAdd = 0.0;
-          
+
           if (segment.silenceDuration > 0) {
             silenceDurationToAdd = segment.silenceDuration;
             logger.i('   🔇 User-defined silence: ${silenceDurationToAdd}s');
@@ -354,7 +355,7 @@ class AudioExtractorService {
         }
 
         logger.i('\n📝 Files to concatenate: ${segmentFiles.length}');
-        
+
         // Verify all files
         for (int i = 0; i < segmentFiles.length; i++) {
           final file = File(segmentFiles[i]);
@@ -369,13 +370,15 @@ class AudioExtractorService {
         final concatFilePath =
             '${tempDir.path}${Platform.pathSeparator}concat.txt';
         final concatFile = File(concatFilePath);
-        
-        final concatContent = segmentFiles.map((f) {
-          String path = f.replaceAll('\\', '/');
-          path = path.replaceAll("'", "'\\''");
-          return "file '$path'";
-        }).join('\n');
-        
+
+        final concatContent = segmentFiles
+            .map((f) {
+              String path = f.replaceAll('\\', '/');
+              path = path.replaceAll("'", "'\\''");
+              return "file '$path'";
+            })
+            .join('\n');
+
         logger.i('\n📋 Concat file:');
         logger.i(concatContent);
         await concatFile.writeAsString(concatContent);
@@ -383,22 +386,20 @@ class AudioExtractorService {
         // Concatenate
         String concatFilePathForFFmpeg = concatFilePath.replaceAll('\\', '/');
         String outputPathForFFmpeg = outputPath.replaceAll('\\', '/');
-        
-        final concatArgs = [
-          '-f',
-          'concat',
-          '-safe',
-          '0',
-          '-i',
-          concatFilePathForFFmpeg,
-          '-acodec',
-          'copy',
-          outputPathForFFmpeg,
-          '-y',
-          '-v',
-          'error',
-        ];
 
+        // Nouveau (ré-encode proprement) :
+        final concatArgs = [
+          '-f', 'concat', '-safe', '0',
+          '-i', concatFilePathForFFmpeg,
+          '-c:a', 'libmp3lame',
+          '-b:a', '32k',
+          // Optionnel mais utile pour uniformiser le décodage :
+          // '-ar', '44100',    // échantillonnage
+          // '-ac', '2',        // stéréo (ou '1' si vous voulez mono)
+          outputPathForFFmpeg,
+          '-y', '-v', 'error',
+        ];
+        
         logger.i('\n🔗 Concatenating files...');
         final concatResult = await Process.run('ffmpeg', concatArgs);
 
@@ -409,7 +410,7 @@ class AudioExtractorService {
             logger.i('🎉 SUCCESS!');
             logger.i('   Output: $outputPath');
             logger.i('   Size: $outputSize bytes');
-            
+
             return {
               'success': true,
               'message': 'Extraction successful',
@@ -427,16 +428,17 @@ class AudioExtractorService {
           logger.e('❌ Concatenation failed');
           logger.e('   Exit code: ${concatResult.exitCode}');
           logger.e('   stderr: ${concatResult.stderr}');
-          
+
           String errorMessage = 'Failed to concatenate segments';
           String errorStderr = concatResult.stderr.toString();
-          
+
           if (errorStderr.contains('Permission denied')) {
-            errorMessage = 'Permission denied. Stop audio playback and try again.';
+            errorMessage =
+                'Permission denied. Stop audio playback and try again.';
           } else if (errorStderr.contains('No such file or directory')) {
             errorMessage = 'File not found during concatenation.';
           }
-          
+
           return {
             'success': false,
             'message': '$errorMessage\n\nDetails: ${concatResult.stderr}',
