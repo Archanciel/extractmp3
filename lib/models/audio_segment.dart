@@ -1,17 +1,20 @@
+import '../utils/time_format_util.dart';
+
 class AudioSegment {
   final double startPosition;
   final double endPosition;
   final double silenceDuration; // Duration of silence to add after this segment
-  
+
   AudioSegment({
     required this.startPosition,
     required this.endPosition,
     this.silenceDuration = 0.0,
   });
-  
+
   // Duration of this segment in seconds
-  double get duration => endPosition - startPosition;
-  
+  double get duration =>
+      TimeFormatUtil.normalizeToTenths(endPosition - startPosition);
+
   // Copy with method for easy updates
   AudioSegment copyWith({
     double? startPosition,
@@ -24,7 +27,7 @@ class AudioSegment {
       silenceDuration: silenceDuration ?? this.silenceDuration,
     );
   }
-  
+
   Map<String, dynamic> toMap() {
     return {
       'startPosition': startPosition,
@@ -32,7 +35,7 @@ class AudioSegment {
       'silenceDuration': silenceDuration,
     };
   }
-  
+
   factory AudioSegment.fromMap(Map<String, dynamic> map) {
     return AudioSegment(
       startPosition: map['startPosition'] as double,

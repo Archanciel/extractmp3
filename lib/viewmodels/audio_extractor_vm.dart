@@ -4,6 +4,7 @@ import '../models/audio_file.dart';
 import '../models/audio_segment.dart';
 import '../models/extraction_result.dart';
 import '../services/audio_extractor_service.dart';
+import '../utils/time_format_util.dart';
 
 class AudioExtractorVM extends ChangeNotifier {
   AudioFile _audioFile = AudioFile();
@@ -17,10 +18,13 @@ class AudioExtractorVM extends ChangeNotifier {
   
   // Computed properties
   double get totalDuration {
-    return _segments.fold(0.0, (sum, segment) => 
-      sum + segment.duration + segment.silenceDuration);
+    return _segments.fold(0.0, (sum, s) =>
+      sum
+      + TimeFormatUtil.normalizeToTenths(s.duration)
+      + TimeFormatUtil.normalizeToTenths(s.silenceDuration)
+    );
   }
-  
+    
   int get segmentCount => _segments.length;
 
   void setAudioFile({
@@ -39,17 +43,27 @@ class AudioExtractorVM extends ChangeNotifier {
   }
   
   void addSegment(AudioSegment segment) {
-    _segments.add(segment);
+    final normalized = AudioSegment(
+      startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
+      endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
+      silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
+    );
+    _segments.add(normalized);
     notifyListeners();
   }
-  
+
   void updateSegment(int index, AudioSegment segment) {
     if (index >= 0 && index < _segments.length) {
-      _segments[index] = segment;
+      final normalized = AudioSegment(
+        startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
+        endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
+        silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
+      );
+      _segments[index] = normalized;
       notifyListeners();
     }
   }
-  
+    
   void removeSegment(int index) {
     if (index >= 0 && index < _segments.length) {
       _segments.removeAt(index);
