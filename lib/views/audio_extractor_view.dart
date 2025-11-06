@@ -24,8 +24,9 @@ class TimeTextInputFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    if (oldValue.text.length > newValue.text.length)
+    if (oldValue.text.length > newValue.text.length) {
       return newValue; // allow deletes
+    }
     if (!_valid.hasMatch(newValue.text)) return oldValue;
     return newValue;
   }
