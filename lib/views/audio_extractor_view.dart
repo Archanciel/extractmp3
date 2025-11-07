@@ -40,6 +40,20 @@ class AudioExtractorView extends StatefulWidget {
 }
 
 class _AudioExtractorViewState extends State<AudioExtractorView> {
+  late final ScrollController _segmentsScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _segmentsScrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _segmentsScrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _pickMP3File({
     required BuildContext context,
     required AudioExtractorVM audioExtractorVM,
@@ -97,6 +111,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         return;
       }
 
+      int commentCount = comments.length;
       int added = 0, skipped = 0;
       for (final c in comments) {
         // Convert tenth-of-seconds → seconds
@@ -107,13 +122,24 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             end > start &&
             audioExtractorVM.audioFile.duration > 0 &&
             end <= audioExtractorVM.audioFile.duration) {
-          audioExtractorVM.addSegment(
-            AudioSegment(
-              startPosition: start,
-              endPosition: end,
-              silenceDuration: 0.0,
-            ),
-          );
+          if (added < commentCount - 1) {
+            audioExtractorVM.addSegment(
+              AudioSegment(
+                startPosition: start,
+                endPosition: end,
+                silenceDuration: kDefaultSilenceDuration,
+              ),
+            );
+          } else {
+            // For the last comment, no silence added
+            audioExtractorVM.addSegment(
+              AudioSegment(
+                startPosition: start,
+                endPosition: end,
+                silenceDuration: 0.0,
+              ),
+            );
+          }
           added++;
         } else {
           skipped++;
@@ -406,8 +432,15 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Scrollbar(
-                        thumbVisibility: true,
+                        controller: _segmentsScrollController, // <-- important
+                        thumbVisibility: true, // optionnel, utile sur desktop
                         child: ListView.builder(
+                          controller:
+                              _segmentsScrollController, // <-- important
+                          primary:
+                              false, // <-- car imbriqué dans SingleChildScrollView
+                          shrinkWrap:
+                              true, // <-- pour éviter contraintes infinies                       thumbVisibility: true,
                           itemCount: vm.segments.length,
                           itemBuilder: (context, index) {
                             final s = vm.segments[index];
