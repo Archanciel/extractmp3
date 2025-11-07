@@ -132,7 +132,9 @@ class AudioExtractorService {
           '-safe',
           '0',
           '-i',
-          concatFilePath.replaceAll('\\', '/'),
+          '-q:a', '2', // VBR quality 0(best)…9(worst). 2 ≈ ~190 kbps typical
+          '-ar', '44100', // sample rate (44.1 kHz is standard for MP3)
+         '-ac', '1',          // stereo (default). For speech you may set '1'          concatFilePath.replaceAll('\\', '/'),
           '-acodec',
           'copy',
           outputPath.replaceAll('\\', '/'),
@@ -215,7 +217,7 @@ class AudioExtractorService {
     }
   }
 
-  /// Android implementation for multiple segments
+  /// Android implementation for multiple segments (hardened with timeout)
   static Future<Map<String, dynamic>> _extractSegmentsOnAndroid({
     required String inputPath,
     required String outputPath,
@@ -224,21 +226,73 @@ class AudioExtractorService {
     try {
       final segmentsList = segments.map((s) => s.toMap()).toList();
 
-      final result = await _channel.invokeMethod('extractAudioSegments', {
-        'inputPath': inputPath,
-        'outputPath': outputPath,
-        'segments': segmentsList,
-      });
+      // Helpful debug logging
+      logger.i(
+        '[Android] extractAudioSegments call -> '
+        'input="$inputPath", output="$outputPath", segments=${segmentsList.length}',
+      );
 
+      // PROTECT: if the native side never returns, avoid infinite wait
+      final dynamic result = await _channel
+          .invokeMethod('extractAudioSegments', {
+            'inputPath': inputPath,
+            'outputPath': outputPath,
+            'segments': segmentsList,
+          })
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              logger.e('[Android] extractAudioSegments timed out (30s)');
+              // Fall back to a structured failure so UI can recover
+              return {
+                'success': false,
+                'message':
+                    'Timeout while extracting on Android (no response from native side)',
+                'outputPath': null,
+              };
+            },
+          );
+
+      // If native returned a Map (recommended), pass it through
+      if (result is Map) {
+        logger.i('[Android] extractAudioSegments result: $result');
+        return {
+          'success': (result['success'] as bool?) ?? false,
+          'message': (result['message'] as String?) ?? '',
+          'outputPath': result['outputPath'] as String?,
+        };
+      }
+
+      // Defensive: unexpected type from native
+      logger.e('[Android] Unexpected result type: ${result.runtimeType}');
       return {
-        'success': result['success'] as bool,
-        'message': result['message'] as String,
-        'outputPath': result['outputPath'] as String?,
+        'success': false,
+        'message':
+            'Unexpected response type from native: ${result.runtimeType}',
+        'outputPath': null,
+      };
+    } on MissingPluginException catch (e) {
+      // Method channel not wired up for Android
+      logger.e('[Android] MissingPluginException: $e');
+      return {
+        'success': false,
+        'message':
+            'Android method "extractAudioSegments" is not implemented.\n'
+            'Please implement it in the platform code or use the desktop/FFmpeg path.',
+        'outputPath': null,
       };
     } on PlatformException catch (e) {
+      logger.e('[Android] PlatformException: ${e.code} ${e.message}');
       return {
         'success': false,
         'message': 'Android extraction error: ${e.message}',
+        'outputPath': null,
+      };
+    } catch (e, st) {
+      logger.e('[Android] Unexpected exception: $e\n$st');
+      return {
+        'success': false,
+        'message': 'Android unexpected error: $e',
         'outputPath': null,
       };
     }
@@ -399,7 +453,7 @@ class AudioExtractorService {
           outputPathForFFmpeg,
           '-y', '-v', 'error',
         ];
-        
+
         logger.i('\n🔗 Concatenating files...');
         final concatResult = await Process.run('ffmpeg', concatArgs);
 
