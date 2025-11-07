@@ -46,3 +46,10 @@ app.*.map.json
 *.cc
 *.cmake
 *.swift
+/android/app/build/intermediates
+/android/app/build/kotlin
+/android/app/build/outputs
+/android/app/build/tmp
+*.cmake
+*.swift
+*.cc

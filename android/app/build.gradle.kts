@@ -1,3 +1,4 @@
+// android/app/build.gradle.kts (project/root)
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -47,6 +48,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("com.github.naman14:TAndroidLame:1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")  // Add this
 }
