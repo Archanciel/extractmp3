@@ -1,5 +1,4 @@
-// android/app/src/main/kotlin/com/example/extractmp3/MainActivity.kt
-package <your.package>
+package com.example.extractmp3
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
