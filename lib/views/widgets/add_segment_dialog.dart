@@ -21,6 +21,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   late final TextEditingController _startController;
   late final TextEditingController _endController;
   late final TextEditingController _silenceController;
+  late final TextEditingController _titleController;
 
   @override
   void initState() {
@@ -34,6 +35,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     _silenceController = TextEditingController(
       text: TimeFormatUtil.formatSeconds(widget.existingSegment?.silenceDuration ?? 0),
     );
+    _titleController = TextEditingController(
+      text:(widget.existingSegment?.title ?? ""));
   }
 
   @override
@@ -66,6 +69,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
       startPosition: start,
       endPosition: end,
       silenceDuration: silence,
+      title: _titleController.text,
     ));
   }
 

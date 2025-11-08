@@ -128,6 +128,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                 startPosition: start,
                 endPosition: end,
                 silenceDuration: kDefaultSilenceDuration,
+                title: c.title,
               ),
             );
           } else {
@@ -137,6 +138,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                 startPosition: start,
                 endPosition: end,
                 silenceDuration: 0.0,
+                title: c.title,
               ),
             );
           }

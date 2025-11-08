@@ -47,6 +47,7 @@ class AudioExtractorVM extends ChangeNotifier {
       startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
       endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
       silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
+      title: segment.title,
     );
     _segments.add(normalized);
     notifyListeners();
@@ -58,6 +59,7 @@ class AudioExtractorVM extends ChangeNotifier {
         startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
         endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
         silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
+      title: segment.title,
       );
       _segments[index] = normalized;
       notifyListeners();
