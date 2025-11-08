@@ -1,595 +1,411 @@
+// lib/services/audio_extractor_service.dart
 import 'dart:io';
-import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
+
+// Android/iOS FFmpeg/FFprobe (Dart plugin)
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../models/audio_segment.dart';
 
 class AudioExtractorService {
-  static const MethodChannel _channel = MethodChannel('audio_extractor');
-  static const MethodChannel _durationChannel = MethodChannel('audio_duration');
   static final Logger logger = Logger();
 
-  // Constant for default silence duration between segments (in seconds)
+  /// Default silence (seconds) inserted between segments when user did not specify any.
   static const double defaultSilenceDuration = 1.0;
 
-  // Path to the 1-second silence MP3 asset
-  static const String silenceAssetPath = 'assets/mp3/1-second-of-silence.mp3';
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Duration
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Get audio duration in seconds
+  /// Returns the media duration in seconds.
   static Future<double> getAudioDuration({required String filePath}) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      try {
-        final result = await _durationChannel.invokeMethod('getDuration', {
-          'filePath': filePath,
-        });
-        return (result as num).toDouble();
-      } catch (e) {
-        logger.i('Error getting duration: $e');
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Use FFprobeKit on mobile
+        final session = await FFprobeKit.getMediaInformation(filePath);
+        final info = session.getMediaInformation();
+        final durationStr = info?.getDuration(); // seconds as string (e.g. "123.456")
+        if (durationStr != null) {
+          final d = double.tryParse(durationStr);
+          if (d != null && d > 0) return d;
+        }
+        // Fallback: 60s if unknown
+        logger.w('FFprobeKit returned no duration for "$filePath", fallback to 60s');
         return 60.0;
-      }
-    } else {
-      return await _getMP3Duration(filePath: filePath);
-    }
-  }
-
-  static Future<double> _getMP3Duration({required String filePath}) async {
-    try {
-      final List<String> arguments = [
-        '-i',
-        filePath,
-        '-v',
-        'quiet',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        '-sexagesimal',
-      ];
-
-      final ProcessResult result = await Process.run('ffprobe', arguments);
-      if (result.exitCode == 0) {
-        String durationStr = (result.stdout as String).trim();
-        List<String> parts = durationStr.split(':');
-        if (parts.length == 3) {
-          int hours = int.parse(parts[0]);
-          int minutes = int.parse(parts[1]);
-          double seconds = double.parse(parts[2]);
-          return (hours * 3600) + (minutes * 60) + seconds;
-        }
-        return double.tryParse(durationStr) ?? 60.0;
-      }
-      return 60.0;
-    } catch (e) {
-      logger.i('Error getting duration: $e');
-      return 60.0;
-    }
-  }
-
-  /// Copy the 1-second silence asset to a temporary file
-  /// Returns the path to the copied silence file
-  static Future<String> _copySilenceAssetToTemp(String tempDir) async {
-    final silencePath = '$tempDir${Platform.pathSeparator}silence_1sec.mp3';
-    final silenceFile = File(silencePath);
-
-    // Only copy if it doesn't already exist
-    if (!silenceFile.existsSync()) {
-      logger.i('📋 Copying silence asset to temp...');
-      final ByteData data = await rootBundle.load(silenceAssetPath);
-      final List<int> bytes = data.buffer.asUint8List();
-      await silenceFile.writeAsBytes(bytes);
-      logger.i('✅ Silence asset copied - Size: ${bytes.length} bytes');
-    } else {
-      logger.i('✅ Using existing silence file');
-    }
-
-    return silencePath;
-  }
-
-  /// Creates silence by copying the asset file multiple times if needed
-  /// For durations > 1 second, concatenates multiple copies
-  static Future<String?> _createSilenceFile({
-    required String outputPath,
-    required double duration,
-    required String silenceAssetPath,
-  }) async {
-    logger.i('🔇 Creating ${duration}s silence using asset file...');
-
-    try {
-      if (duration == 1.0) {
-        // Simple case: just copy the 1-second file
-        final silenceAsset = File(silenceAssetPath);
-        await silenceAsset.copy(outputPath);
-        logger.i('✅ Copied 1-second silence');
-        return outputPath;
-      } else if (duration < 1.0) {
-        // For less than 1 second, we'll just use the 1-second file
-        // (Could trim it with FFmpeg, but simpler to just use 1 second)
-        logger.i('⚠️ Requested ${duration}s, using 1.0s instead');
-        final silenceAsset = File(silenceAssetPath);
-        await silenceAsset.copy(outputPath);
-        return outputPath;
       } else {
-        // For more than 1 second, concatenate multiple 1-second files
-        final numCopies = duration.round();
-        logger.i('📝 Concatenating $numCopies copies of 1-second silence...');
-
-        final tempDir = File(outputPath).parent.path;
-        final concatFilePath =
-            '$tempDir${Platform.pathSeparator}silence_concat_${DateTime.now().millisecondsSinceEpoch}.txt';
-
-        // Create concat file with multiple references to the same silence file
-        final concatContent = List.generate(
-          numCopies,
-          (i) => "file '${silenceAssetPath.replaceAll('\\', '/')}'",
-        ).join('\n');
-
-        await File(concatFilePath).writeAsString(concatContent);
-
-        // Concatenate using FFmpeg
-        final args = [
-          '-f',
-          'concat',
-          '-safe',
-          '0',
-          '-i',
-          '-q:a', '2', // VBR quality 0(best)…9(worst). 2 ≈ ~190 kbps typical
-          '-ar', '44100', // sample rate (44.1 kHz is standard for MP3)
-         '-ac', '1',          // stereo (default). For speech you may set '1'          concatFilePath.replaceAll('\\', '/'),
-          '-acodec',
-          'copy',
-          outputPath.replaceAll('\\', '/'),
-          '-y',
-          '-v',
-          'error',
-        ];
-
-        final result = await Process.run('ffmpeg', args);
-
-        // Clean up concat file
-        try {
-          await File(concatFilePath).delete();
-        } catch (_) {}
-
-        if (result.exitCode == 0 && File(outputPath).existsSync()) {
-          logger.i('✅ Created ${duration}s silence');
-          return outputPath;
-        } else {
-          logger.e('❌ Failed to create multi-second silence: ${result.stderr}');
-          // Fallback: just use 1 second
-          final silenceAsset = File(silenceAssetPath);
-          await silenceAsset.copy(outputPath);
-          logger.i('⚠️ Fallback: using 1-second silence');
-          return outputPath;
-        }
+        // Desktop: use system ffprobe
+        return await _probeDurationDesktop(filePath: filePath);
       }
-    } catch (e) {
-      logger.e('❌ Error creating silence: $e');
-      return null;
+    } catch (e, st) {
+      logger.w('Duration probe failed for "$filePath": $e\n$st');
+      return 60.0;
     }
   }
 
-  /// Extract audio segment using platform-specific implementation
+  static Future<double> _probeDurationDesktop({required String filePath}) async {
+    final args = [
+      '-i', filePath,
+      '-v', 'quiet',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+    ];
+    final r = await Process.run('ffprobe', args);
+    if (r.exitCode == 0) {
+      final out = (r.stdout as String).trim();
+      final d = double.tryParse(out);
+      if (d != null && d > 0) return d;
+    }
+    return 60.0;
+    // If you prefer sexagesimal, convert it; numeric is simpler and more robust.
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Single segment extract
+  // ─────────────────────────────────────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> extractAudio({
     required String inputPath,
     required String outputPath,
     required double startTime,
     required double endTime,
+    String? encoderBitrate, // e.g. "128k" (optional)
   }) async {
-    if (Platform.isAndroid) {
-      return await _extractOnAndroid(
+    if (endTime <= startTime) {
+      return {
+        'success': false,
+        'message': 'Invalid time range: end <= start',
+        'outputPath': null,
+      };
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      return _extractOneMobile(
         inputPath: inputPath,
         outputPath: outputPath,
         startTime: startTime,
         endTime: endTime,
+        encoderBitrate: encoderBitrate ?? '128k',
       );
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return await _extractWithFFmpeg(
+      return _extractOneDesktop(
         inputPath: inputPath,
         outputPath: outputPath,
         startTime: startTime,
         endTime: endTime,
+        encoderBitrate: encoderBitrate ?? '128k',
       );
     } else {
-      throw UnsupportedError('Platform not supported');
+      return {
+        'success': false,
+        'message': 'Platform not supported',
+        'outputPath': null,
+      };
     }
   }
 
-  /// Extract multiple audio segments and combine them
+  static Future<Map<String, dynamic>> _extractOneMobile({
+    required String inputPath,
+    required String outputPath,
+    required double startTime,
+    required double endTime,
+    required String encoderBitrate,
+  }) async {
+    final dur = endTime - startTime;
+    final cmd = [
+      '-ss', startTime.toString(),
+      '-t', dur.toString(),
+      '-i', _q(inputPath),
+      '-c:a', 'libmp3lame',
+      '-b:a', encoderBitrate,
+      _q(outputPath),
+      '-y'
+    ].join(' ');
+
+    final sess = await FFmpegKit.execute(cmd);
+    final rc = await sess.getReturnCode();
+    if (ReturnCode.isSuccess(rc)) {
+      return {'success': true, 'message': 'OK', 'outputPath': outputPath};
+    } else {
+      final logs = await sess.getAllLogsAsString();
+      return {
+        'success': false,
+        'message': 'FFmpeg error (mobile one-shot):\n$logs',
+        'outputPath': null,
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> _extractOneDesktop({
+    required String inputPath,
+    required String outputPath,
+    required double startTime,
+    required double endTime,
+    required String encoderBitrate,
+  }) async {
+    final args = [
+      '-i', inputPath,
+      '-ss', startTime.toString(),
+      '-to', endTime.toString(),
+      '-c:a', 'libmp3lame',
+      '-b:a', encoderBitrate,
+      outputPath,
+      '-y',
+    ];
+    final r = await Process.run('ffmpeg', args);
+    if (r.exitCode == 0) {
+      return {'success': true, 'message': 'OK', 'outputPath': outputPath};
+    } else {
+      return {'success': false, 'message': 'FFmpeg error: ${r.stderr}', 'outputPath': null};
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Multiple segments extract + concat
+  // ─────────────────────────────────────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> extractAudioSegments({
     required String inputPath,
     required String outputPath,
     required List<AudioSegment> segments,
+    String? encoderBitrate, // e.g. "128k" (optional)
   }) async {
-    if (Platform.isAndroid) {
-      return await _extractSegmentsOnAndroid(
+    if (segments.isEmpty) {
+      return {'success': false, 'message': 'No segments to extract', 'outputPath': null};
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      return _extractSegmentsMobile(
         inputPath: inputPath,
         outputPath: outputPath,
         segments: segments,
+        encoderBitrate: encoderBitrate ?? '128k',
       );
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return await _extractSegmentsWithFFmpeg(
+      return _extractSegmentsDesktop(
         inputPath: inputPath,
         outputPath: outputPath,
         segments: segments,
+        encoderBitrate: encoderBitrate ?? '128k',
       );
     } else {
-      throw UnsupportedError('Platform not supported');
+      return {
+        'success': false,
+        'message': 'Platform not supported',
+        'outputPath': null,
+      };
     }
   }
 
-  /// Android implementation for multiple segments (hardened with timeout)
-  static Future<Map<String, dynamic>> _extractSegmentsOnAndroid({
+  /// Android/iOS path using ffmpeg_kit_flutter_new (no native Kotlin required).
+  static Future<Map<String, dynamic>> _extractSegmentsMobile({
     required String inputPath,
     required String outputPath,
     required List<AudioSegment> segments,
+    required String encoderBitrate,
   }) async {
     try {
-      final segmentsList = segments.map((s) => s.toMap()).toList();
+      final tmp = await _tempDir(); // app cache directory
+      final parts = <String>[];
 
-      // Helpful debug logging
-      logger.i(
-        '[Android] extractAudioSegments call -> '
-        'input="$inputPath", output="$outputPath", segments=${segmentsList.length}',
-      );
+      // 1) Cut each segment (encode to MP3 with your chosen quality)
+      for (int i = 0; i < segments.length; i++) {
+        final s = segments[i];
+        final segPath = '${tmp.path}/segment_$i.mp3';
 
-      // PROTECT: if the native side never returns, avoid infinite wait
-      final dynamic result = await _channel
-          .invokeMethod('extractAudioSegments', {
-            'inputPath': inputPath,
-            'outputPath': outputPath,
-            'segments': segmentsList,
-          })
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              logger.e('[Android] extractAudioSegments timed out (30s)');
-              // Fall back to a structured failure so UI can recover
-              return {
-                'success': false,
-                'message':
-                    'Timeout while extracting on Android (no response from native side)',
-                'outputPath': null,
-              };
-            },
-          );
+        final cut = [
+          '-ss', s.startPosition.toString(),
+          '-to', s.endPosition.toString(),
+          '-i', _q(inputPath),
+          '-c:a', 'libmp3lame',
+          '-b:a', encoderBitrate,
+          _q(segPath),
+          '-y'
+        ].join(' ');
 
-      // If native returned a Map (recommended), pass it through
-      if (result is Map) {
-        logger.i('[Android] extractAudioSegments result: $result');
-        return {
-          'success': (result['success'] as bool?) ?? false,
-          'message': (result['message'] as String?) ?? '',
-          'outputPath': result['outputPath'] as String?,
-        };
+        final cutSess = await FFmpegKit.execute(cut);
+        if (!ReturnCode.isSuccess(await cutSess.getReturnCode())) {
+          return {
+            'success': false,
+            'message': 'FFmpeg cut failed @segment ${i + 1}:\n${await cutSess.getAllLogsAsString()}',
+            'outputPath': null,
+          };
+        }
+        parts.add(segPath);
+
+        // 2) Insert silence (user-defined or default between segments)
+        final silUser = s.silenceDuration;
+        final needDefault = silUser <= 0 && i < segments.length - 1;
+        final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+        if (silDur > 0) {
+          final silPath = '${tmp.path}/silence_$i.mp3';
+          final silCmd = [
+            '-f', 'lavfi',
+            '-i', '"anullsrc=r=44100:cl=mono"',
+            '-t', silDur.toString(),
+            '-c:a', 'libmp3lame',
+            '-b:a', encoderBitrate,
+            _q(silPath),
+            '-y'
+          ].join(' ');
+          final silSess = await FFmpegKit.execute(silCmd);
+          if (!ReturnCode.isSuccess(await silSess.getReturnCode())) {
+            return {
+              'success': false,
+              'message': 'FFmpeg silence failed:\n${await silSess.getAllLogsAsString()}',
+              'outputPath': null,
+            };
+          }
+          parts.add(silPath);
+        }
       }
 
-      // Defensive: unexpected type from native
-      logger.e('[Android] Unexpected result type: ${result.runtimeType}');
-      return {
-        'success': false,
-        'message':
-            'Unexpected response type from native: ${result.runtimeType}',
-        'outputPath': null,
-      };
-    } on MissingPluginException catch (e) {
-      // Method channel not wired up for Android
-      logger.e('[Android] MissingPluginException: $e');
-      return {
-        'success': false,
-        'message':
-            'Android method "extractAudioSegments" is not implemented.\n'
-            'Please implement it in the platform code or use the desktop/FFmpeg path.',
-        'outputPath': null,
-      };
-    } on PlatformException catch (e) {
-      logger.e('[Android] PlatformException: ${e.code} ${e.message}');
-      return {
-        'success': false,
-        'message': 'Android extraction error: ${e.message}',
-        'outputPath': null,
-      };
+      // 3) Concat list file
+      final listFile = File('${tmp.path}/concat.txt')
+        ..writeAsStringSync(parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'));
+
+      // 4) Re-encode once at the end to avoid MP3 padding gaps
+      final concatCmd = [
+        '-f', 'concat', '-safe', '0',
+        '-i', _q(listFile.path),
+        '-c:a', 'libmp3lame',
+        '-b:a', encoderBitrate,
+        _q(outputPath),
+        '-y'
+      ].join(' ');
+
+      final concatSess = await FFmpegKit.execute(concatCmd);
+      if (ReturnCode.isSuccess(await concatSess.getReturnCode())) {
+        return {'success': true, 'message': 'Extraction successful', 'outputPath': outputPath};
+      } else {
+        return {
+          'success': false,
+          'message': 'FFmpeg concat failed:\n${await concatSess.getAllLogsAsString()}',
+          'outputPath': null,
+        };
+      }
     } catch (e, st) {
-      logger.e('[Android] Unexpected exception: $e\n$st');
-      return {
-        'success': false,
-        'message': 'Android unexpected error: $e',
-        'outputPath': null,
-      };
+      logger.e('Mobile multi-extract failed: $e\n$st');
+      return {'success': false, 'message': 'Plugin error: $e', 'outputPath': null};
     }
   }
 
-  /// Desktop implementation for multiple segments using FFmpeg and asset silence file
-  static Future<Map<String, dynamic>> _extractSegmentsWithFFmpeg({
+  /// Desktop path using system ffmpeg.
+  static Future<Map<String, dynamic>> _extractSegmentsDesktop({
     required String inputPath,
     required String outputPath,
     required List<AudioSegment> segments,
+    required String encoderBitrate,
   }) async {
     try {
       final tempDir = Directory.systemTemp.createTempSync('mp3_extract_');
-      final segmentFiles = <String>[];
+      final partFiles = <String>[];
 
       try {
-        logger.i('🎬 Starting extraction of ${segments.length} segments...');
-        logger.i('📂 Temp directory: ${tempDir.path}');
+        logger.i('🎬 Extract ${segments.length} segments -> ${tempDir.path}');
 
-        // Copy the silence asset once for reuse
-        final silenceAssetPath = await _copySilenceAssetToTemp(tempDir.path);
-
-        // Extract each segment and add silence
+        // 1) Extract every segment
         for (int i = 0; i < segments.length; i++) {
-          final segment = segments[i];
-          final segmentPath =
-              '${tempDir.path}${Platform.pathSeparator}segment_$i.mp3';
+          final s = segments[i];
+          final segPath = '${tempDir.path}${Platform.pathSeparator}segment_$i.mp3';
 
-          logger.i('\n📍 Segment ${i + 1}/${segments.length}:');
-          logger.i('   Start: ${segment.startPosition}s');
-          logger.i('   End: ${segment.endPosition}s');
-          logger.i('   Duration: ${segment.duration}s');
-
-          // Extract segment
-          final arguments = [
-            '-i',
-            inputPath,
-            '-ss',
-            segment.startPosition.toString(),
-            '-to',
-            segment.endPosition.toString(),
-            '-acodec',
-            'libmp3lame',
-            '-b:a',
-            '32k',
-            segmentPath,
-            '-y',
-            '-v',
-            'error',
+          final args = [
+            '-i', inputPath,
+            '-ss', s.startPosition.toString(),
+            '-to', s.endPosition.toString(),
+            '-c:a', 'libmp3lame',
+            '-b:a', encoderBitrate,
+            segPath,
+            '-y', '-v', 'error',
           ];
-
-          logger.i('   🎬 Extracting segment...');
-          final result = await Process.run('ffmpeg', arguments);
-
-          if (result.exitCode != 0) {
-            logger.e('❌ Failed to extract segment ${i + 1}');
-            logger.e('   stderr: ${result.stderr}');
+          final r = await Process.run('ffmpeg', args);
+          if (r.exitCode != 0) {
             return {
               'success': false,
-              'message': 'Failed to extract segment ${i + 1}: ${result.stderr}',
+              'message': 'Failed to extract segment ${i + 1}: ${r.stderr}',
               'outputPath': null,
             };
           }
+          partFiles.add(segPath);
 
-          // Verify segment file
-          final segmentFile = File(segmentPath);
-          if (!segmentFile.existsSync()) {
-            logger.e('❌ Segment file not found after extraction!');
-            return {
-              'success': false,
-              'message': 'Segment file not created: $segmentPath',
-              'outputPath': null,
-            };
-          }
-
-          final segmentSize = segmentFile.lengthSync();
-          segmentFiles.add(segmentPath);
-          logger.i('   ✅ Segment extracted - Size: $segmentSize bytes');
-
-          // Determine silence duration
-          double silenceDurationToAdd = 0.0;
-
-          if (segment.silenceDuration > 0) {
-            silenceDurationToAdd = segment.silenceDuration;
-            logger.i('   🔇 User-defined silence: ${silenceDurationToAdd}s');
-          } else if (i < segments.length - 1) {
-            silenceDurationToAdd = defaultSilenceDuration;
-            logger.i('   🔇 Default silence: ${silenceDurationToAdd}s');
-          } else {
-            logger.i('   🔇 Last segment - no silence');
-          }
-
-          // Add silence if needed
-          if (silenceDurationToAdd > 0) {
-            final silencePath =
-                '${tempDir.path}${Platform.pathSeparator}silence_$i.mp3';
-
-            final createdSilencePath = await _createSilenceFile(
-              outputPath: silencePath,
-              duration: silenceDurationToAdd,
-              silenceAssetPath: silenceAssetPath,
-            );
-
-            if (createdSilencePath != null) {
-              final silenceFile = File(createdSilencePath);
-              final silenceSize = silenceFile.lengthSync();
-              segmentFiles.add(createdSilencePath);
-              logger.i('   ✅ Silence added - Size: $silenceSize bytes');
-            } else {
-              logger.w('   ⚠️ Warning: Could not create silence file');
-              logger.w('   Continuing without silence for this segment...');
+          // 2) Silence if needed
+          final silUser = s.silenceDuration;
+          final needDefault = silUser <= 0 && i < segments.length - 1;
+          final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+          if (silDur > 0) {
+            final silPath = '${tempDir.path}${Platform.pathSeparator}silence_$i.mp3';
+            final silArgs = [
+              '-f', 'lavfi',
+              '-i', 'anullsrc=r=44100:cl=mono',
+              '-t', silDur.toString(),
+              '-c:a', 'libmp3lame',
+              '-b:a', encoderBitrate,
+              silPath,
+              '-y', '-v', 'error',
+            ];
+            final rs = await Process.run('ffmpeg', silArgs);
+            if (rs.exitCode != 0) {
+              return {
+                'success': false,
+                'message': 'Failed to create silence for segment ${i + 1}: ${rs.stderr}',
+                'outputPath': null,
+              };
             }
+            partFiles.add(silPath);
           }
         }
 
-        logger.i('\n📝 Files to concatenate: ${segmentFiles.length}');
+        // 3) Concat using list file and re-encode once
+        final concatList = File('${tempDir.path}${Platform.pathSeparator}concat.txt');
+        concatList.writeAsStringSync(
+          partFiles.map((f) {
+            String p = f.replaceAll('\\', '/').replaceAll("'", "'\\''");
+            return "file '$p'";
+          }).join('\n'),
+        );
 
-        // Verify all files
-        for (int i = 0; i < segmentFiles.length; i++) {
-          final file = File(segmentFiles[i]);
-          if (file.existsSync()) {
-            logger.i('   ✅ File $i: ${file.lengthSync()} bytes');
-          } else {
-            logger.e('   ❌ File $i missing!');
-          }
-        }
-
-        // Create concat file
-        final concatFilePath =
-            '${tempDir.path}${Platform.pathSeparator}concat.txt';
-        final concatFile = File(concatFilePath);
-
-        final concatContent = segmentFiles
-            .map((f) {
-              String path = f.replaceAll('\\', '/');
-              path = path.replaceAll("'", "'\\''");
-              return "file '$path'";
-            })
-            .join('\n');
-
-        logger.i('\n📋 Concat file:');
-        logger.i(concatContent);
-        await concatFile.writeAsString(concatContent);
-
-        // Concatenate
-        String concatFilePathForFFmpeg = concatFilePath.replaceAll('\\', '/');
-        String outputPathForFFmpeg = outputPath.replaceAll('\\', '/');
-
-        // Nouveau (ré-encode proprement) :
         final concatArgs = [
           '-f', 'concat', '-safe', '0',
-          '-i', concatFilePathForFFmpeg,
+          '-i', concatList.path.replaceAll('\\', '/'),
           '-c:a', 'libmp3lame',
-          '-b:a', '32k',
-          // Optionnel mais utile pour uniformiser le décodage :
-          // '-ar', '44100',    // échantillonnage
-          // '-ac', '2',        // stéréo (ou '1' si vous voulez mono)
-          outputPathForFFmpeg,
+          '-b:a', encoderBitrate,
+          outputPath.replaceAll('\\', '/'),
           '-y', '-v', 'error',
         ];
 
-        logger.i('\n🔗 Concatenating files...');
         final concatResult = await Process.run('ffmpeg', concatArgs);
-
-        if (concatResult.exitCode == 0) {
-          final outputFile = File(outputPath);
-          if (outputFile.existsSync()) {
-            final outputSize = outputFile.lengthSync();
-            logger.i('🎉 SUCCESS!');
-            logger.i('   Output: $outputPath');
-            logger.i('   Size: $outputSize bytes');
-
-            return {
-              'success': true,
-              'message': 'Extraction successful',
-              'outputPath': outputPath,
-            };
-          } else {
-            logger.e('❌ Output file not created');
-            return {
-              'success': false,
-              'message': 'Output file not found: $outputPath',
-              'outputPath': null,
-            };
-          }
+        if (concatResult.exitCode == 0 && File(outputPath).existsSync()) {
+          return {'success': true, 'message': 'Extraction successful', 'outputPath': outputPath};
         } else {
-          logger.e('❌ Concatenation failed');
-          logger.e('   Exit code: ${concatResult.exitCode}');
-          logger.e('   stderr: ${concatResult.stderr}');
-
-          String errorMessage = 'Failed to concatenate segments';
-          String errorStderr = concatResult.stderr.toString();
-
-          if (errorStderr.contains('Permission denied')) {
-            errorMessage =
-                'Permission denied. Stop audio playback and try again.';
-          } else if (errorStderr.contains('No such file or directory')) {
-            errorMessage = 'File not found during concatenation.';
-          }
-
-          return {
-            'success': false,
-            'message': '$errorMessage\n\nDetails: ${concatResult.stderr}',
-            'outputPath': null,
-          };
+          final stderr = concatResult.stderr?.toString() ?? 'Unknown error';
+          return {'success': false, 'message': 'Concat failed: $stderr', 'outputPath': null};
         }
       } finally {
         try {
           tempDir.deleteSync(recursive: true);
-          logger.i('🧹 Temp directory cleaned up');
-        } catch (e) {
-          logger.w('⚠️ Could not clean up temp: $e');
+        } catch (_) {
+          // ignore cleanup errors
         }
       }
-    } catch (e) {
-      logger.e('💥 Exception: $e');
-      return {
-        'success': false,
-        'message': 'FFmpeg error: $e',
-        'outputPath': null,
-      };
+    } catch (e, st) {
+      logger.e('Desktop multi-extract failed: $e\n$st');
+      return {'success': false, 'message': 'FFmpeg error: $e', 'outputPath': null};
     }
   }
 
-  /// Android implementation using MediaCodec
-  static Future<Map<String, dynamic>> _extractOnAndroid({
-    required String inputPath,
-    required String outputPath,
-    required double startTime,
-    required double endTime,
-  }) async {
-    try {
-      final result = await _channel.invokeMethod('extractAudio', {
-        'inputPath': inputPath,
-        'outputPath': outputPath,
-        'startTime': startTime,
-        'endTime': endTime,
-      });
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────────────────────
 
-      return {
-        'success': result['success'] as bool,
-        'message': result['message'] as String,
-        'outputPath': result['outputPath'] as String?,
-      };
-    } on PlatformException catch (e) {
-      return {
-        'success': false,
-        'message': 'Android extraction error: ${e.message}',
-        'outputPath': null,
-      };
+  static String _q(String path) => '"${path.replaceAll('\\', '/')}"';
+
+  static Future<Directory> _tempDir() async {
+    // A simple cross-platform temp dir selector.
+    if (Platform.isAndroid || Platform.isIOS) {
+      // On mobile, use the application cache directory exposed by dart:io.
+      return Directory.systemTemp;
     }
-  }
-
-  /// Desktop implementation using FFmpeg
-  static Future<Map<String, dynamic>> _extractWithFFmpeg({
-    required String inputPath,
-    required String outputPath,
-    required double startTime,
-    required double endTime,
-  }) async {
-    try {
-      final List<String> arguments = [
-        '-i',
-        inputPath,
-        '-ss',
-        startTime.toString(),
-        '-to',
-        endTime.toString(),
-        '-acodec',
-        'libmp3lame',
-        '-b:a',
-        '32k',
-        outputPath,
-        '-y',
-      ];
-
-      final ProcessResult result = await Process.run('ffmpeg', arguments);
-
-      if (result.exitCode == 0) {
-        return {
-          'success': true,
-          'message': 'Extraction successful',
-          'outputPath': outputPath,
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'FFmpeg error: ${result.stderr}',
-          'outputPath': null,
-        };
-      }
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'FFmpeg error: $e\n\nMake sure FFmpeg is installed.',
-        'outputPath': null,
-      };
-    }
+    return Directory.systemTemp;
   }
 }
