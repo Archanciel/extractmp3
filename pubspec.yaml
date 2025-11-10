@@ -48,6 +48,7 @@ dependencies:
   intl: ^0.20.2
   ffmpeg_kit_flutter_new: ^4.1.0
   flutter_tts: ^4.2.2
+  path: ^1.9.1
 
 
 dev_dependencies:

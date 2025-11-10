@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../models/playlist.dart';
 import '../services/audio_extractor_service.dart';
 import '../services/json_data_service.dart';
 import '../models/audio_segment.dart';
@@ -65,14 +66,65 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       );
       if (result == null || result.files.single.path == null) return;
 
-      final String path = result.files.single.path!;
-      final String name = result.files.single.name;
+      final String pickedPath = PathUtil.directoryOf(result.files.single.path!);
+      final String pickedName = result.files.single.name;
 
+      // Default to FilePicker path
+      String effectivePath = pickedPath;
+
+      // ── Read the single playlist JSON in the same directory ───────────────
+      try {
+        final String? folder = await FilePicker.platform.getDirectoryPath();
+        if (folder != null) {
+          final dir = Directory(folder);
+          final entries = dir.listSync();
+          // Find the first JSON file in that folder
+          final jsonFile = entries
+              .whereType<File>() // keep only files
+              .firstWhere(
+                (f) => f.path.toLowerCase().endsWith('.json'),
+                orElse: () => File(''), // placeholder if none found
+              );
+
+          if (await dir.exists()) {
+            final jsonFiles =
+                dir
+                    .listSync()
+                    .whereType<File>()
+                    .where((f) => f.path.toLowerCase().endsWith('.json'))
+                    .toList();
+
+            if (jsonFiles.isNotEmpty) {
+              final String playlistJsonPath = jsonFiles.first.path;
+
+              final Playlist playlist = JsonDataService.loadFromFile(
+                jsonPathFileName: playlistJsonPath,
+                type: Playlist,
+              );
+
+              // On Android, prefer the real filesystem path from the playlist
+              if (Platform.isAndroid) {
+                // Use candidate (even if existsSync fails for SAF); it’s the “real” path.
+                effectivePath = playlist.downloadPath;
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore discovery/parsing errors; keep using FilePicker path.
+      }
+
+      // Probe duration with the final path
       final double duration = await AudioExtractorService.getAudioDuration(
-        filePath: path,
+        filePath: PathUtil.joinPath(effectivePath, pickedName),
       );
 
-      audioExtractorVM.setAudioFile(path: path, name: name, duration: duration);
+      // Update VM
+      audioExtractorVM.setAudioFile(
+        path: effectivePath,
+        name: pickedName,
+        duration: duration,
+      );
     } catch (e) {
       audioExtractorVM.setError('Error selecting file: $e');
     }
@@ -88,15 +140,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         return;
       }
 
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
+      String commentJsonFilePathName = PathUtil.joinPath(
+        PathUtil.directoryOf(audioExtractorVM.audioFile.path!),
+        kCommentDirName,
+        '${PathUtil.fileNameWithoutExtension(audioExtractorVM.audioFile.name!)}.json',
       );
-      if (result == null || result.files.single.path == null) return;
 
-      final String jsonPath = result.files.single.path!;
       final List<Comment> comments = JsonDataService.loadListFromFile<Comment>(
-        jsonPathFileName: jsonPath,
+        jsonPathFileName: commentJsonFilePathName,
         type: Comment,
       );
 
@@ -114,7 +165,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       int commentCount = comments.length;
       int added = 0, skipped = 0;
       for (final c in comments) {
-        // Convert tenth-of-seconds → seconds
+        // Convert tenth-of-seconds → seconds (example: 125 => 12.5)
         final double start = c.commentStartPositionInTenthOfSeconds / 10.0;
         final double end = c.commentEndPositionInTenthOfSeconds / 10.0;
 
@@ -455,13 +506,30 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 leading: CircleAvatar(
                                   child: Text('${index + 1}'),
                                 ),
-                                title: Text(
-                                  '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
-                                  '${TimeFormatUtil.formatSeconds(s.endPosition)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                title: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s.title, // ← always required
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
+                                      '${TimeFormatUtil.formatSeconds(s.endPosition)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
                                 ),
+
                                 subtitle: Text(
                                   'Duration: ${TimeFormatUtil.formatSeconds(s.duration)}'
                                   '${s.silenceDuration > 0 ? ' + ${TimeFormatUtil.formatSeconds(s.silenceDuration)} silence' : ''}',

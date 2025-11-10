@@ -15,16 +15,18 @@ class AudioExtractorVM extends ChangeNotifier {
   AudioFile get audioFile => _audioFile;
   List<AudioSegment> get segments => List.unmodifiable(_segments);
   ExtractionResult get extractionResult => _extractionResult;
-  
+
   // Computed properties
   double get totalDuration {
-    return _segments.fold(0.0, (sum, s) =>
-      sum
-      + TimeFormatUtil.normalizeToTenths(s.duration)
-      + TimeFormatUtil.normalizeToTenths(s.silenceDuration)
+    return _segments.fold(
+      0.0,
+      (sum, s) =>
+          sum +
+          TimeFormatUtil.normalizeToTenths(s.duration) +
+          TimeFormatUtil.normalizeToTenths(s.silenceDuration),
     );
   }
-    
+
   int get segmentCount => _segments.length;
 
   void setAudioFile({
@@ -41,13 +43,16 @@ class AudioExtractorVM extends ChangeNotifier {
     );
     notifyListeners();
   }
-  
+
+  // lib/viewmodels/audio_extractor_vm.dart
   void addSegment(AudioSegment segment) {
     final normalized = AudioSegment(
+      title: segment.title, // ← keep
       startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
       endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
-      silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
-      title: segment.title,
+      silenceDuration: TimeFormatUtil.normalizeToTenths(
+        segment.silenceDuration,
+      ),
     );
     _segments.add(normalized);
     notifyListeners();
@@ -56,23 +61,25 @@ class AudioExtractorVM extends ChangeNotifier {
   void updateSegment(int index, AudioSegment segment) {
     if (index >= 0 && index < _segments.length) {
       final normalized = AudioSegment(
+        title: segment.title, // ← keep
         startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
         endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
-        silenceDuration: TimeFormatUtil.normalizeToTenths(segment.silenceDuration),
-      title: segment.title,
+        silenceDuration: TimeFormatUtil.normalizeToTenths(
+          segment.silenceDuration,
+        ),
       );
       _segments[index] = normalized;
       notifyListeners();
     }
   }
-    
+
   void removeSegment(int index) {
     if (index >= 0 && index < _segments.length) {
       _segments.removeAt(index);
       notifyListeners();
     }
   }
-  
+
   void clearSegments() {
     _segments.clear();
     notifyListeners();
@@ -96,7 +103,7 @@ class AudioExtractorVM extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    
+
     if (_segments.isEmpty) {
       _extractionResult = ExtractionResult.error(
         'Please add at least one segment to extract',

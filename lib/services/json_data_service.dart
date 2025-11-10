@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/comment.dart';
+import '../models/playlist.dart';
 
 typedef FromJsonFunction<T> = T Function(Map<String, dynamic> jsonDataMap);
 typedef ToJsonFunction<T> = Map<String, dynamic> Function(T model);
@@ -73,11 +74,13 @@ class ProblemInJsonFileException implements Exception {
 class JsonDataService {
   // typedef FromJsonFunction<T> = T Function(Map<String, dynamic> jsonDataMap);
   static final Map<Type, FromJsonFunction> _fromJsonFunctionsMap = {
+    Playlist: (jsonDataMap) => Playlist.fromJson(jsonDataMap),
     Comment: (jsonDataMap) => Comment.fromJson(jsonDataMap),
   };
 
   // typedef ToJsonFunction<T> = Map<String, dynamic> Function(T model);
   static final Map<Type, ToJsonFunction> _toJsonFunctionsMap = {
+    Playlist: (model) => model.toJson(),
     Comment: (model) => model.toJson(),
   };
 
