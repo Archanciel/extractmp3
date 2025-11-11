@@ -8,7 +8,7 @@ import '../services/audio_extractor_service.dart';
 import '../utils/time_format_util.dart';
 
 class AudioExtractorVM extends ChangeNotifier {
-  // ── Single-file mode (legacy) ───────────────────────────────────────────────
+  // ── Single-file mode (unchanged) ────────────────────────────────────────────
   AudioFile _audioFile = AudioFile();
   final List<AudioSegment> _segments = [];
   ExtractionResult _extractionResult = ExtractionResult.initial();
@@ -135,8 +135,7 @@ class AudioExtractorVM extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Multi-input mode ────────────────────────────────────────────────────────
-
+  // ── Multi-input mode (with per-input gain) ─────────────────────────────────
   final List<InputSegments> _multiInputs = [];
   List<InputSegments> get multiInputs => List.unmodifiable(_multiInputs);
   bool get hasMultipleSources => _multiInputs.length > 1;
@@ -149,6 +148,7 @@ class AudioExtractorVM extends ChangeNotifier {
   void addMultiInput({
     required String inputPath,
     required List<AudioSegment> segments,
+    double gainDb = 0.0,
   }) {
     final normalized =
         segments
@@ -166,7 +166,9 @@ class AudioExtractorVM extends ChangeNotifier {
             )
             .toList();
 
-    _multiInputs.add(InputSegments(inputPath: inputPath, segments: normalized));
+    _multiInputs.add(
+      InputSegments(inputPath: inputPath, segments: normalized, gainDb: gainDb),
+    );
     notifyListeners();
   }
 
@@ -174,13 +176,44 @@ class AudioExtractorVM extends ChangeNotifier {
     int index, {
     String? inputPath,
     List<AudioSegment>? segments,
+    double? gainDb,
   }) {
     if (index < 0 || index >= _multiInputs.length) return;
     final cur = _multiInputs[index];
     _multiInputs[index] = InputSegments(
       inputPath: inputPath ?? cur.inputPath,
       segments: segments ?? cur.segments,
+      gainDb: gainDb ?? cur.gainDb,
     );
+    notifyListeners();
+  }
+
+  void updateMultiInputGain(int index, double gainDb) {
+    if (index < 0 || index >= _multiInputs.length) return;
+    final cur = _multiInputs[index];
+    _multiInputs[index] = cur.copyWith(gainDb: gainDb);
+    notifyListeners();
+  }
+
+  void updateMultiInputSegments(int index, List<AudioSegment> segments) {
+    if (index < 0 || index >= _multiInputs.length) return;
+    final normalized =
+        segments
+            .map(
+              (s) => AudioSegment(
+                startPosition: TimeFormatUtil.normalizeToTenths(
+                  s.startPosition,
+                ),
+                endPosition: TimeFormatUtil.normalizeToTenths(s.endPosition),
+                silenceDuration: TimeFormatUtil.normalizeToTenths(
+                  s.silenceDuration,
+                ),
+                title: s.title,
+              ),
+            )
+            .toList();
+    final cur = _multiInputs[index];
+    _multiInputs[index] = cur.copyWith(segments: normalized);
     notifyListeners();
   }
 

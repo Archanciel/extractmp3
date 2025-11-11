@@ -109,7 +109,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             end > start &&
             audioExtractorVM.audioFile.duration > 0 &&
             end <= audioExtractorVM.audioFile.duration) {
-          final silence = (i < comments.length - 1) ? kDefaultSilenceDuration : 0.0;
+          final silence =
+              (i < comments.length - 1) ? kDefaultSilenceDuration : 0.0;
           audioExtractorVM.addSegment(
             AudioSegment(
               startPosition: start,
@@ -151,7 +152,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     final vm = context.read<AudioExtractorVM>();
     final player = context.read<AudioPlayerVM>();
 
-    // Guard clauses for legacy single-file mode
     if (vm.multiInputs.isEmpty) {
       if (vm.audioFile.path == null) {
         vm.setError('Please select an MP3 file first');
@@ -164,7 +164,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
 
     try {
-      // Release file locks on Windows if player loaded
       if (Platform.isWindows && player.isLoaded) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -182,7 +181,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
       String suggested;
       if (vm.multiInputs.isNotEmpty) {
-        final totalSegs = vm.multiInputs.fold<int>(0, (n, i) => n + i.segments.length);
+        final totalSegs = vm.multiInputs.fold<int>(
+          0,
+          (n, i) => n + i.segments.length,
+        );
         suggested = '${base}_multi_${totalSegs}_segments.mp3';
       } else if (vm.segments.length == 1) {
         suggested =
@@ -202,7 +204,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
       final String outputPath = '$dir${Platform.pathSeparator}$suggested';
 
-      // Switch to multi-input pipeline if multiInputs is not empty
       if (vm.multiInputs.isNotEmpty) {
         await vm.extractMP3Multi(outputPath);
       } else {
@@ -265,13 +266,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       if (res == null || res.files.single.path == null) return;
 
       final inputPath = res.files.single.path!;
-      vm.addMultiInput(inputPath: inputPath, segments: const []);
+      vm.addMultiInput(inputPath: inputPath, segments: const [], gainDb: 0.0);
     } catch (e) {
       vm.setError('Error selecting source: $e');
     }
   }
 
-  Future<void> _loadAndPickCommentsForSource(BuildContext context, int index) async {
+  Future<void> _loadAndPickCommentsForSource(
+    BuildContext context,
+    int index,
+  ) async {
     final vm = context.read<AudioExtractorVM>();
     try {
       final res = await FilePicker.platform.pickFiles(
@@ -288,7 +292,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       if (comments.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No comments found'), backgroundColor: Colors.orange),
+          const SnackBar(
+            content: Text('No comments found'),
+            backgroundColor: Colors.orange,
+          ),
         );
         return;
       }
@@ -303,18 +310,20 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       for (int i = 0; i < picked.length; i++) {
         final c = picked[i];
         final start = c.commentStartPositionInTenthOfSeconds / 10.0;
-        final end   = c.commentEndPositionInTenthOfSeconds   / 10.0;
+        final end = c.commentEndPositionInTenthOfSeconds / 10.0;
         if (end > start) {
           final isLast = (i == picked.length - 1);
-          segments.add(AudioSegment(
-            startPosition: start,
-            endPosition: end,
-            silenceDuration: isLast ? 0.0 : kDefaultSilenceDuration,
-            title: c.title,
-          ));
+          segments.add(
+            AudioSegment(
+              startPosition: start,
+              endPosition: end,
+              silenceDuration: isLast ? 0.0 : kDefaultSilenceDuration,
+              title: c.title,
+            ),
+          );
         }
       }
-      vm.updateMultiInput(index, segments: segments);
+      vm.updateMultiInputSegments(index, segments);
     } catch (e) {
       vm.setError('Error picking comments: $e');
     }
@@ -348,7 +357,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     children: [
                       const Text(
                         'Sources (multi-files)',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       ElevatedButton.icon(
                         onPressed: () => _addSource(context),
@@ -362,7 +374,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     builder: (context, vm, _) {
                       if (vm.multiInputs.isEmpty) {
                         return const Text(
-                          'No extra sources. Use “Add MP3 Source” to build a multi-file extraction.\n'
+                          'No extra sources. Use “Add MP3 Source” and adjust per-source volume if needed.\n'
                           'If you keep only one source (or none here), the single-file section below stays active.',
                           style: TextStyle(color: Colors.grey),
                         );
@@ -375,10 +387,18 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 padding: const EdgeInsets.all(12),
                                 child: _SourceRow(
                                   index: i,
-                                  onRemove: () => vm.removeMultiInput(i),
-                                  onLoadComments: () => _loadAndPickCommentsForSource(context, i),
                                   input: vm.multiInputs[i],
-                                  totalSegments: vm.multiInputs[i].segments.length,
+                                  totalSegments:
+                                      vm.multiInputs[i].segments.length,
+                                  onRemove: () => vm.removeMultiInput(i),
+                                  onLoadComments:
+                                      () => _loadAndPickCommentsForSource(
+                                        context,
+                                        i,
+                                      ),
+                                  onGainChanged:
+                                      (gainDb) =>
+                                          vm.updateMultiInputGain(i, gainDb),
                                 ),
                               ),
                             ),
@@ -386,7 +406,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                             alignment: Alignment.centerRight,
                             child: Text(
                               'Total (multi): ${TimeFormatUtil.formatSeconds(vm.totalDurationMulti)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           const Divider(height: 24),
@@ -395,10 +417,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     },
                   ),
 
-                  // ── Single-file section (legacy) ────────────────────────────
+                  // ── Single-file section (unchanged) ────────────────────────
                   ElevatedButton(
-                    onPressed: () => _pickMP3File(context: context, audioExtractorVM: vm),
-                    child: const Text('Select unique MP3 file'),
+                    onPressed:
+                        () => _pickMP3File(
+                          context: context,
+                          audioExtractorVM: vm,
+                        ),
+                    child: const Text('Select MP3 File'),
                   ),
                   const SizedBox(height: 16),
 
@@ -415,25 +441,37 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       Column(
                         children: [
                           ElevatedButton.icon(
-                            onPressed: vm.audioFile.path == null
-                                ? null
-                                : () => _loadSegmentsFromCommentFile(context: context, audioExtractorVM: vm),
+                            onPressed:
+                                vm.audioFile.path == null
+                                    ? null
+                                    : () => _loadSegmentsFromCommentFile(
+                                      context: context,
+                                      audioExtractorVM: vm,
+                                    ),
                             icon: const Icon(Icons.file_open, size: 18),
                             label: const Text('Load from comments'),
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
-                            onPressed: vm.audioFile.path == null
-                                ? null
-                                : () async {
-                                    final segment = await showDialog<AudioSegment>(
-                                      context: context,
-                                      builder: (_) => AddSegmentDialog(maxDuration: vm.audioFile.duration),
-                                    );
-                                    if (segment != null) vm.addSegment(segment);
-                                  },
+                            onPressed:
+                                vm.audioFile.path == null
+                                    ? null
+                                    : () async {
+                                      final segment =
+                                          await showDialog<AudioSegment>(
+                                            context: context,
+                                            builder:
+                                                (_) => AddSegmentDialog(
+                                                  maxDuration:
+                                                      vm.audioFile.duration,
+                                                ),
+                                          );
+                                      if (segment != null) {
+                                        vm.addSegment(segment);
+                                      }
+                                    },
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add Manually'),
+                            label: const Text('Add manually'),
                           ),
                         ],
                       ),
@@ -474,9 +512,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           itemBuilder: (context, index) {
                             final s = vm.segments[index];
                             return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               child: ListTile(
-                                leading: CircleAvatar(child: Text('${index + 1}')),
+                                leading: CircleAvatar(
+                                  child: Text('${index + 1}'),
+                                ),
                                 title: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -484,13 +527,19 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                       s.title,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
                                       '${TimeFormatUtil.formatSeconds(s.endPosition)}',
-                                      style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black87),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black87,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -504,19 +553,33 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                     IconButton(
                                       icon: const Icon(Icons.edit, size: 20),
                                       onPressed: () async {
-                                        final updated = await showDialog<AudioSegment>(
-                                          context: context,
-                                          builder: (_) => AddSegmentDialog(
-                                            maxDuration: vm.audioFile.duration,
-                                            existingSegment: s,
-                                          ),
-                                        );
-                                        if (updated != null) vm.updateSegment(index, updated);
+                                        final updated =
+                                            await showDialog<AudioSegment>(
+                                              context: context,
+                                              builder:
+                                                  (_) => AddSegmentDialog(
+                                                    maxDuration:
+                                                        vm.audioFile.duration,
+                                                    existingSegment: s,
+                                                  ),
+                                            );
+                                        if (updated != null) {
+                                          vm.updateSegment(index, updated);
+                                        }
                                       },
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.delete, size: 20, color: Colors.red),
-                                      onPressed: () => _confirmDeleteSegment(context, vm, index),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        size: 20,
+                                        color: Colors.red,
+                                      ),
+                                      onPressed:
+                                          () => _confirmDeleteSegment(
+                                            context,
+                                            vm,
+                                            index,
+                                          ),
                                     ),
                                   ],
                                 ),
@@ -540,7 +603,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           onPressed: () => _confirmClearSegments(context, vm),
                           icon: const Icon(Icons.clear_all, size: 18),
                           label: const Text('Clear All'),
-                          style: TextButton.styleFrom(foregroundColor: Colors.red),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
                         ),
                       ],
                     ),
@@ -548,9 +613,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: vm.extractionResult.isProcessing
-                        ? null
-                        : () => _extractMP3(context: context),
+                    onPressed:
+                        vm.extractionResult.isProcessing
+                            ? null
+                            : () => _extractMP3(context: context),
                     child: const Text('Extract MP3'),
                   ),
 
@@ -564,9 +630,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       child: Text(
                         vm.extractionResult.message,
                         style: TextStyle(
-                          color: vm.extractionResult.isError
-                              ? Colors.red
-                              : vm.extractionResult.isSuccess
+                          color:
+                              vm.extractionResult.isError
+                                  ? Colors.red
+                                  : vm.extractionResult.isSuccess
                                   ? Colors.green[700]
                                   : Colors.black,
                           fontSize: 14,
@@ -575,11 +642,15 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       ),
                     ),
 
-                  if (vm.extractionResult.isSuccess && vm.extractionResult.outputPath != null) ...[
+                  if (vm.extractionResult.isSuccess &&
+                      vm.extractionResult.outputPath != null) ...[
                     const Divider(height: 32),
                     const Text(
                       'Audio Player',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     _buildAudioPlayerControls(
@@ -608,24 +679,28 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton.icon(
-              onPressed: audioPlayerVM.hasError
-                  ? () => audioPlayerVM.tryRepairPlayer()
-                  : audioPlayerVM.isLoaded
+              onPressed:
+                  audioPlayerVM.hasError
+                      ? () => audioPlayerVM.tryRepairPlayer()
+                      : audioPlayerVM.isLoaded
                       ? () => audioPlayerVM.togglePlay()
-                      : () => _playExtractedFile(context, audioExtractorVM.extractionResult.outputPath!),
+                      : () => _playExtractedFile(
+                        context,
+                        audioExtractorVM.extractionResult.outputPath!,
+                      ),
               icon: Icon(
                 audioPlayerVM.hasError
                     ? Icons.refresh
                     : audioPlayerVM.isPlaying
-                        ? Icons.pause
-                        : Icons.play_arrow,
+                    ? Icons.pause
+                    : Icons.play_arrow,
               ),
               label: Text(
                 audioPlayerVM.hasError
                     ? 'Retry'
                     : audioPlayerVM.isPlaying
-                        ? 'Pause'
-                        : 'Play',
+                    ? 'Pause'
+                    : 'Play',
               ),
             ),
           ],
@@ -639,7 +714,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             ),
             child: Slider(
               value: audioPlayerVM.progressPercent.clamp(0.0, 1.0),
-              onChanged: (value) => audioPlayerVM.seekByPercentage(percentage: value),
+              onChanged:
+                  (value) => audioPlayerVM.seekByPercentage(percentage: value),
             ),
           ),
           Padding(
@@ -672,68 +748,87 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     );
   }
 
-  void _confirmDeleteSegment(BuildContext context, AudioExtractorVM vm, int index) {
+  void _confirmDeleteSegment(
+    BuildContext context,
+    AudioExtractorVM vm,
+    int index,
+  ) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Segment'),
-        content: const Text('Are you sure you want to delete this segment?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              vm.removeSegment(index);
-              Navigator.of(context).pop();
-            },
-            child: const Text('Delete'),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Delete Segment'),
+            content: const Text(
+              'Are you sure you want to delete this segment?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () {
+                  vm.removeSegment(index);
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _confirmClearSegments(BuildContext context, AudioExtractorVM vm) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Clear All Segments'),
-        content: const Text('Are you sure you want to clear all segments?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              vm.clearSegments();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Clear All'),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Clear All Segments'),
+            content: const Text('Are you sure you want to clear all segments?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () {
+                  vm.clearSegments();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Clear All'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showSettingsDialog({required BuildContext context}) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('MP3 Extractor $kApplicationVersion'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Fermer')),
-        ],
-      ),
+      builder:
+          (_) => AlertDialog(
+            title: Text('MP3 Extractor $kApplicationVersion'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
     );
   }
 }
 
-// ── Small row widget for a multi-input item ───────────────────────────────────
+// ── Small row widget for a multi-input item (with per-input gain) ────────────
 class _SourceRow extends StatelessWidget {
   final int index;
   final VoidCallback onRemove;
   final VoidCallback onLoadComments;
   final InputSegments input;
   final int totalSegments;
+  final ValueChanged<double> onGainChanged;
 
   const _SourceRow({
     required this.index,
@@ -741,52 +836,77 @@ class _SourceRow extends StatelessWidget {
     required this.onLoadComments,
     required this.input,
     required this.totalSegments,
+    required this.onGainChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final gainDb = input.gainDb.clamp(-12.0, 12.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(PathUtil.fileName(input.inputPath), style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text('Segments: $totalSegments'),
-            ],
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                PathUtil.fileName(input.inputPath),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: onLoadComments,
+              icon: const Icon(Icons.file_open),
+              label: const Text('Load & pick comments'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: onRemove,
+            ),
+          ],
         ),
-        TextButton.icon(
-          onPressed: onLoadComments,
-          icon: const Icon(Icons.file_open),
-          label: const Text('Load & pick comments'),
+        Row(
+          children: [
+            Text('Segments: $totalSegments'),
+            const SizedBox(width: 16),
+            Text('Gain: ${gainDb.toStringAsFixed(1)} dB'),
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: onRemove,
+        // Per-input gain slider: -12 dB .. +12 dB
+        Slider(
+          value: gainDb,
+          min: -12.0,
+          max: 12.0,
+          divisions: 48, // 0.5 dB steps
+          label: '${gainDb.toStringAsFixed(1)} dB',
+          onChanged: (v) => onGainChanged(double.parse(v.toStringAsFixed(1))),
         ),
       ],
     );
   }
 }
 
-// ── Dialog to pick a subset of comments ───────────────────────────────────────
+// ── Dialog to pick a subset of comments (unchanged) ──────────────────────────
 class _MultiSelectCommentsDialog extends StatefulWidget {
   final List<Comment> comments;
   const _MultiSelectCommentsDialog({required this.comments});
 
   @override
-  State<_MultiSelectCommentsDialog> createState() => _MultiSelectCommentsDialogState();
+  State<_MultiSelectCommentsDialog> createState() =>
+      _MultiSelectCommentsDialogState();
 }
 
-class _MultiSelectCommentsDialogState extends State<_MultiSelectCommentsDialog> {
+class _MultiSelectCommentsDialogState
+    extends State<_MultiSelectCommentsDialog> {
   late final List<bool> _checked;
 
   @override
   void initState() {
     super.initState();
-    _checked = List<bool>.filled(widget.comments.length, true); // all checked by default
+    _checked = List<bool>.filled(
+      widget.comments.length,
+      true,
+    ); // all checked by default
   }
 
   @override
@@ -801,19 +921,28 @@ class _MultiSelectCommentsDialogState extends State<_MultiSelectCommentsDialog> 
           itemBuilder: (_, i) {
             final c = widget.comments[i];
             final start = (c.commentStartPositionInTenthOfSeconds / 10.0);
-            final end   = (c.commentEndPositionInTenthOfSeconds   / 10.0);
+            final end = (c.commentEndPositionInTenthOfSeconds / 10.0);
             return CheckboxListTile(
               value: _checked[i],
               onChanged: (v) => setState(() => _checked[i] = v ?? false),
-              title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${TimeFormatUtil.formatSeconds(start)} → ${TimeFormatUtil.formatSeconds(end)}'),
+              title: Text(
+                c.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${TimeFormatUtil.formatSeconds(start)} → ${TimeFormatUtil.formatSeconds(end)}',
+              ),
               controlAffinity: ListTileControlAffinity.leading,
             );
           },
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final picked = <Comment>[];
