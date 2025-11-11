@@ -7,6 +7,7 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
+import '../constants.dart';
 import '../models/audio_segment.dart';
 
 /// Represents one input file and the list of segments to extract from it.
@@ -18,9 +19,6 @@ class InputSegments {
 
 class AudioExtractorService {
   static final Logger logger = Logger();
-
-  /// Default silence (seconds) appended between segments when user did not specify any.
-  static const double defaultSilenceDuration = 1.0;
 
   // ────────────────────────────────────────────────────────────────────────────
   // Duration
@@ -227,7 +225,7 @@ class AudioExtractorService {
         // silence handling
         final silUser = s.silenceDuration;
         final needDefault = silUser <= 0 && i < segments.length - 1;
-        final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+        final silDur = silUser > 0 ? silUser : (needDefault ? kDefaultSilenceDuration : 0.0);
         if (silDur > 0) {
           final silPath = '${tmp.path}/silence_$i.mp3';
           final silCmd = [
@@ -307,7 +305,7 @@ class AudioExtractorService {
 
           final silUser = s.silenceDuration;
           final needDefault = silUser <= 0 && i < segments.length - 1;
-          final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+          final silDur = silUser > 0 ? silUser : (needDefault ? kDefaultSilenceDuration : 0.0);
           if (silDur > 0) {
             final silPath = '${tempDir.path}${Platform.pathSeparator}silence_$i.mp3';
             final silArgs = [
@@ -431,7 +429,7 @@ class AudioExtractorService {
           final silUser = s.silenceDuration;
           final isNotLastSegOfInput = j < inp.segments.length - 1;
           final needDefaultBetweenSegments = (silUser <= 0) && isNotLastSegOfInput;
-          final silDur = silUser > 0 ? silUser : (needDefaultBetweenSegments ? defaultSilenceDuration : 0.0);
+          final silDur = silUser > 0 ? silUser : (needDefaultBetweenSegments ? kDefaultSilenceDuration : 0.0);
 
           if (silDur > 0) {
             final silPath = '${tmp.path}/m_sil_${partIndex++}.mp3';
@@ -532,7 +530,7 @@ class AudioExtractorService {
           final silUser = s.silenceDuration;
           final isNotLastSegOfInput = j < inp.segments.length - 1;
           final needDefault = (silUser <= 0) && isNotLastSegOfInput;
-          final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+          final silDur = silUser > 0 ? silUser : (needDefault ? kDefaultSilenceDuration : 0.0);
           if (silDur > 0) {
             final silPath = '${tempDir.path}${Platform.pathSeparator}m_sil_${idx++}.mp3';
             final silArgs = [

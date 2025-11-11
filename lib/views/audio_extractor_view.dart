@@ -347,13 +347,13 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Sources (optional, multi-file)',
+                        'Sources (multi-files)',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       ElevatedButton.icon(
                         onPressed: () => _addSource(context),
                         icon: const Icon(Icons.add),
-                        label: const Text('Add MP3 Source'),
+                        label: const Text('Add MP3 file'),
                       ),
                     ],
                   ),
@@ -398,7 +398,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   // ── Single-file section (legacy) ────────────────────────────
                   ElevatedButton(
                     onPressed: () => _pickMP3File(context: context, audioExtractorVM: vm),
-                    child: const Text('Select MP3 File'),
+                    child: const Text('Select unique MP3 file'),
                   ),
                   const SizedBox(height: 16),
 
@@ -419,7 +419,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 ? null
                                 : () => _loadSegmentsFromCommentFile(context: context, audioExtractorVM: vm),
                             icon: const Icon(Icons.file_open, size: 18),
-                            label: const Text('Load from Comments'),
+                            label: const Text('Load from comments'),
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
