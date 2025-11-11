@@ -2,40 +2,44 @@
 import 'dart:io';
 import 'package:logger/logger.dart';
 
-// Android/iOS FFmpeg/FFprobe (Dart plugin)
+// Android/iOS via plugin
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 import '../models/audio_segment.dart';
 
+/// Represents one input file and the list of segments to extract from it.
+class InputSegments {
+  final String inputPath;
+  final List<AudioSegment> segments;
+  const InputSegments({required this.inputPath, required this.segments});
+}
+
 class AudioExtractorService {
   static final Logger logger = Logger();
 
-  /// Default silence (seconds) inserted between segments when user did not specify any.
+  /// Default silence (seconds) appended between segments when user did not specify any.
   static const double defaultSilenceDuration = 1.0;
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
   // Duration
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
 
-  /// Returns the media duration in seconds.
+  /// Returns media duration in seconds.
   static Future<double> getAudioDuration({required String filePath}) async {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
-        // Use FFprobeKit on mobile
         final session = await FFprobeKit.getMediaInformation(filePath);
         final info = session.getMediaInformation();
-        final durationStr = info?.getDuration(); // seconds as string (e.g. "123.456")
+        final durationStr = info?.getDuration(); // "123.456"
         if (durationStr != null) {
           final d = double.tryParse(durationStr);
           if (d != null && d > 0) return d;
         }
-        // Fallback: 60s if unknown
-        logger.w('FFprobeKit returned no duration for "$filePath", fallback to 60s');
+        logger.w('FFprobeKit no duration for "$filePath", fallback to 60s');
         return 60.0;
       } else {
-        // Desktop: use system ffprobe
         return await _probeDurationDesktop(filePath: filePath);
       }
     } catch (e, st) {
@@ -58,19 +62,18 @@ class AudioExtractorService {
       if (d != null && d > 0) return d;
     }
     return 60.0;
-    // If you prefer sexagesimal, convert it; numeric is simpler and more robust.
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
   // Single segment extract
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> extractAudio({
     required String inputPath,
     required String outputPath,
     required double startTime,
     required double endTime,
-    String? encoderBitrate, // e.g. "128k" (optional)
+    String? encoderBitrate,
   }) async {
     if (endTime <= startTime) {
       return {
@@ -80,13 +83,15 @@ class AudioExtractorService {
       };
     }
 
+    final bitrate = encoderBitrate ?? '128k';
+
     if (Platform.isAndroid || Platform.isIOS) {
       return _extractOneMobile(
         inputPath: inputPath,
         outputPath: outputPath,
         startTime: startTime,
         endTime: endTime,
-        encoderBitrate: encoderBitrate ?? '128k',
+        encoderBitrate: bitrate,
       );
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _extractOneDesktop(
@@ -94,14 +99,10 @@ class AudioExtractorService {
         outputPath: outputPath,
         startTime: startTime,
         endTime: endTime,
-        encoderBitrate: encoderBitrate ?? '128k',
+        encoderBitrate: bitrate,
       );
     } else {
-      return {
-        'success': false,
-        'message': 'Platform not supported',
-        'outputPath': null,
-      };
+      return {'success': false, 'message': 'Platform not supported', 'outputPath': null};
     }
   }
 
@@ -129,11 +130,7 @@ class AudioExtractorService {
       return {'success': true, 'message': 'OK', 'outputPath': outputPath};
     } else {
       final logs = await sess.getAllLogsAsString();
-      return {
-        'success': false,
-        'message': 'FFmpeg error (mobile one-shot):\n$logs',
-        'outputPath': null,
-      };
+      return {'success': false, 'message': 'FFmpeg error (mobile one-shot):\n$logs', 'outputPath': null};
     }
   }
 
@@ -161,44 +158,40 @@ class AudioExtractorService {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Multiple segments extract + concat
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Multi segments (single input) → re-encode once at end
+  // ────────────────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> extractAudioSegments({
     required String inputPath,
     required String outputPath,
     required List<AudioSegment> segments,
-    String? encoderBitrate, // e.g. "128k" (optional)
+    String? encoderBitrate,
   }) async {
     if (segments.isEmpty) {
       return {'success': false, 'message': 'No segments to extract', 'outputPath': null};
     }
+    final bitrate = encoderBitrate ?? '128k';
 
     if (Platform.isAndroid || Platform.isIOS) {
       return _extractSegmentsMobile(
         inputPath: inputPath,
         outputPath: outputPath,
         segments: segments,
-        encoderBitrate: encoderBitrate ?? '128k',
+        encoderBitrate: bitrate,
       );
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _extractSegmentsDesktop(
         inputPath: inputPath,
         outputPath: outputPath,
         segments: segments,
-        encoderBitrate: encoderBitrate ?? '128k',
+        encoderBitrate: bitrate,
       );
     } else {
-      return {
-        'success': false,
-        'message': 'Platform not supported',
-        'outputPath': null,
-      };
+      return {'success': false, 'message': 'Platform not supported', 'outputPath': null};
     }
   }
 
-  /// Android/iOS path using ffmpeg_kit_flutter_new (no native Kotlin required).
   static Future<Map<String, dynamic>> _extractSegmentsMobile({
     required String inputPath,
     required String outputPath,
@@ -206,10 +199,9 @@ class AudioExtractorService {
     required String encoderBitrate,
   }) async {
     try {
-      final tmp = await _tempDir(); // app cache directory
+      final tmp = await _tempDir();
       final parts = <String>[];
 
-      // 1) Cut each segment (encode to MP3 with your chosen quality)
       for (int i = 0; i < segments.length; i++) {
         final s = segments[i];
         final segPath = '${tmp.path}/segment_$i.mp3';
@@ -218,12 +210,10 @@ class AudioExtractorService {
           '-ss', s.startPosition.toString(),
           '-to', s.endPosition.toString(),
           '-i', _q(inputPath),
-          '-c:a', 'libmp3lame',
-          '-b:a', encoderBitrate,
+          '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
           _q(segPath),
           '-y'
         ].join(' ');
-
         final cutSess = await FFmpegKit.execute(cut);
         if (!ReturnCode.isSuccess(await cutSess.getReturnCode())) {
           return {
@@ -234,18 +224,16 @@ class AudioExtractorService {
         }
         parts.add(segPath);
 
-        // 2) Insert silence (user-defined or default between segments)
+        // silence handling
         final silUser = s.silenceDuration;
         final needDefault = silUser <= 0 && i < segments.length - 1;
         final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
         if (silDur > 0) {
           final silPath = '${tmp.path}/silence_$i.mp3';
           final silCmd = [
-            '-f', 'lavfi',
-            '-i', '"anullsrc=r=44100:cl=mono"',
+            '-f', 'lavfi', '-i', '"anullsrc=r=44100:cl=mono"',
             '-t', silDur.toString(),
-            '-c:a', 'libmp3lame',
-            '-b:a', encoderBitrate,
+            '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
             _q(silPath),
             '-y'
           ].join(' ');
@@ -261,16 +249,13 @@ class AudioExtractorService {
         }
       }
 
-      // 3) Concat list file
       final listFile = File('${tmp.path}/concat.txt')
         ..writeAsStringSync(parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'));
 
-      // 4) Re-encode once at the end to avoid MP3 padding gaps
       final concatCmd = [
         '-f', 'concat', '-safe', '0',
         '-i', _q(listFile.path),
-        '-c:a', 'libmp3lame',
-        '-b:a', encoderBitrate,
+        '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
         _q(outputPath),
         '-y'
       ].join(' ');
@@ -279,11 +264,7 @@ class AudioExtractorService {
       if (ReturnCode.isSuccess(await concatSess.getReturnCode())) {
         return {'success': true, 'message': 'Extraction successful', 'outputPath': outputPath};
       } else {
-        return {
-          'success': false,
-          'message': 'FFmpeg concat failed:\n${await concatSess.getAllLogsAsString()}',
-          'outputPath': null,
-        };
+        return {'success': false, 'message': 'FFmpeg concat failed:\n${await concatSess.getAllLogsAsString()}', 'outputPath': null};
       }
     } catch (e, st) {
       logger.e('Mobile multi-extract failed: $e\n$st');
@@ -291,7 +272,6 @@ class AudioExtractorService {
     }
   }
 
-  /// Desktop path using system ffmpeg.
   static Future<Map<String, dynamic>> _extractSegmentsDesktop({
     required String inputPath,
     required String outputPath,
@@ -303,9 +283,6 @@ class AudioExtractorService {
       final partFiles = <String>[];
 
       try {
-        logger.i('🎬 Extract ${segments.length} segments -> ${tempDir.path}');
-
-        // 1) Extract every segment
         for (int i = 0; i < segments.length; i++) {
           final s = segments[i];
           final segPath = '${tempDir.path}${Platform.pathSeparator}segment_$i.mp3';
@@ -314,8 +291,7 @@ class AudioExtractorService {
             '-i', inputPath,
             '-ss', s.startPosition.toString(),
             '-to', s.endPosition.toString(),
-            '-c:a', 'libmp3lame',
-            '-b:a', encoderBitrate,
+            '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
             segPath,
             '-y', '-v', 'error',
           ];
@@ -329,7 +305,6 @@ class AudioExtractorService {
           }
           partFiles.add(segPath);
 
-          // 2) Silence if needed
           final silUser = s.silenceDuration;
           final needDefault = silUser <= 0 && i < segments.length - 1;
           final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
@@ -339,8 +314,7 @@ class AudioExtractorService {
               '-f', 'lavfi',
               '-i', 'anullsrc=r=44100:cl=mono',
               '-t', silDur.toString(),
-              '-c:a', 'libmp3lame',
-              '-b:a', encoderBitrate,
+              '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
               silPath,
               '-y', '-v', 'error',
             ];
@@ -356,7 +330,6 @@ class AudioExtractorService {
           }
         }
 
-        // 3) Concat using list file and re-encode once
         final concatList = File('${tempDir.path}${Platform.pathSeparator}concat.txt');
         concatList.writeAsStringSync(
           partFiles.map((f) {
@@ -368,8 +341,7 @@ class AudioExtractorService {
         final concatArgs = [
           '-f', 'concat', '-safe', '0',
           '-i', concatList.path.replaceAll('\\', '/'),
-          '-c:a', 'libmp3lame',
-          '-b:a', encoderBitrate,
+          '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
           outputPath.replaceAll('\\', '/'),
           '-y', '-v', 'error',
         ];
@@ -384,9 +356,7 @@ class AudioExtractorService {
       } finally {
         try {
           tempDir.deleteSync(recursive: true);
-        } catch (_) {
-          // ignore cleanup errors
-        }
+        } catch (_) {}
       }
     } catch (e, st) {
       logger.e('Desktop multi-extract failed: $e\n$st');
@@ -394,18 +364,247 @@ class AudioExtractorService {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Multi inputs (N files → one final MP3)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> extractFromMultipleInputs({
+    required List<InputSegments> inputs,
+    required String outputPath,
+    String encoderBitrate = '128k',
+  }) async {
+    if (inputs.isEmpty) {
+      return {'success': false, 'message': 'No inputs provided', 'outputPath': null};
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      return _extractMultipleMobile(
+        inputs: inputs,
+        outputPath: outputPath,
+        encoderBitrate: encoderBitrate,
+      );
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return _extractMultipleDesktop(
+        inputs: inputs,
+        outputPath: outputPath,
+        encoderBitrate: encoderBitrate,
+      );
+    } else {
+      return {'success': false, 'message': 'Platform not supported', 'outputPath': null};
+    }
+  }
+
+  static Future<Map<String, dynamic>> _extractMultipleMobile({
+    required List<InputSegments> inputs,
+    required String outputPath,
+    required String encoderBitrate,
+  }) async {
+    try {
+      final tmp = await _tempDir();
+      final parts = <String>[];
+      int partIndex = 0;
+
+      for (int i = 0; i < inputs.length; i++) {
+        final inp = inputs[i];
+        for (int j = 0; j < inp.segments.length; j++) {
+          final s = inp.segments[j];
+
+          final cutPath = '${tmp.path}/m_cut_${partIndex++}.mp3';
+          final cutCmd = [
+            '-ss', s.startPosition.toString(),
+            '-to', s.endPosition.toString(),
+            '-i', _q(inp.inputPath),
+            '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+            _q(cutPath),
+            '-y'
+          ].join(' ');
+          final cutSess = await FFmpegKit.execute(cutCmd);
+          if (!ReturnCode.isSuccess(await cutSess.getReturnCode())) {
+            return {
+              'success': false,
+              'message': 'FFmpeg cut failed @input ${i + 1}, segment ${j + 1}:\n${await cutSess.getAllLogsAsString()}',
+              'outputPath': null,
+            };
+          }
+          parts.add(cutPath);
+
+          final silUser = s.silenceDuration;
+          final isNotLastSegOfInput = j < inp.segments.length - 1;
+          final needDefaultBetweenSegments = (silUser <= 0) && isNotLastSegOfInput;
+          final silDur = silUser > 0 ? silUser : (needDefaultBetweenSegments ? defaultSilenceDuration : 0.0);
+
+          if (silDur > 0) {
+            final silPath = '${tmp.path}/m_sil_${partIndex++}.mp3';
+            final silCmd = [
+              '-f', 'lavfi', '-i', '"anullsrc=r=44100:cl=mono"',
+              '-t', silDur.toString(),
+              '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+              _q(silPath),
+              '-y'
+            ].join(' ');
+            final silSess = await FFmpegKit.execute(silCmd);
+            if (!ReturnCode.isSuccess(await silSess.getReturnCode())) {
+              return {
+                'success': false,
+                'message': 'FFmpeg silence failed:\n${await silSess.getAllLogsAsString()}',
+                'outputPath': null,
+              };
+            }
+            parts.add(silPath);
+          }
+        }
+
+        // Optional inter-file silence (1.0s here; set to 0.0 to disable).
+        if (i < inputs.length - 1) {
+          final interPath = '${tmp.path}/m_inter_${partIndex++}.mp3';
+          final interSilDur = 1.0;
+          final interCmd = [
+            '-f', 'lavfi', '-i', '"anullsrc=r=44100:cl=mono"',
+            '-t', interSilDur.toString(),
+            '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+            _q(interPath),
+            '-y'
+          ].join(' ');
+          final interSess = await FFmpegKit.execute(interCmd);
+          if (!ReturnCode.isSuccess(await interSess.getReturnCode())) {
+            return {
+              'success': false,
+              'message': 'FFmpeg inter-file silence failed:\n${await interSess.getAllLogsAsString()}',
+              'outputPath': null,
+            };
+          }
+          parts.add(interPath);
+        }
+      }
+
+      final listFile = File('${tmp.path}/m_concat.txt')
+        ..writeAsStringSync(parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'));
+
+      final concatCmd = [
+        '-f', 'concat', '-safe', '0',
+        '-i', _q(listFile.path),
+        '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+        _q(outputPath),
+        '-y'
+      ].join(' ');
+
+      final concatSess = await FFmpegKit.execute(concatCmd);
+      if (ReturnCode.isSuccess(await concatSess.getReturnCode())) {
+        return {'success': true, 'message': 'Extraction successful', 'outputPath': outputPath};
+      } else {
+        return {'success': false, 'message': 'FFmpeg concat failed:\n${await concatSess.getAllLogsAsString()}', 'outputPath': null};
+      }
+    } catch (e, st) {
+      logger.e('Mobile multi-input failed: $e\n$st');
+      return {'success': false, 'message': 'Plugin error: $e', 'outputPath': null};
+    }
+  }
+
+  static Future<Map<String, dynamic>> _extractMultipleDesktop({
+    required List<InputSegments> inputs,
+    required String outputPath,
+    required String encoderBitrate,
+  }) async {
+    final tempDir = Directory.systemTemp.createTempSync('mp3_multi_');
+    final partFiles = <String>[];
+    int idx = 0;
+
+    try {
+      for (int i = 0; i < inputs.length; i++) {
+        final inp = inputs[i];
+        for (int j = 0; j < inp.segments.length; j++) {
+          final s = inp.segments[j];
+
+          final cutPath = '${tempDir.path}${Platform.pathSeparator}m_cut_${idx++}.mp3';
+          final cutArgs = [
+            '-i', inp.inputPath,
+            '-ss', s.startPosition.toString(),
+            '-to', s.endPosition.toString(),
+            '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+            cutPath, '-y', '-v', 'error',
+          ];
+          final r = await Process.run('ffmpeg', cutArgs);
+          if (r.exitCode != 0) {
+            return {'success': false, 'message': 'Cut failed: ${r.stderr}', 'outputPath': null};
+          }
+          partFiles.add(cutPath);
+
+          final silUser = s.silenceDuration;
+          final isNotLastSegOfInput = j < inp.segments.length - 1;
+          final needDefault = (silUser <= 0) && isNotLastSegOfInput;
+          final silDur = silUser > 0 ? silUser : (needDefault ? defaultSilenceDuration : 0.0);
+          if (silDur > 0) {
+            final silPath = '${tempDir.path}${Platform.pathSeparator}m_sil_${idx++}.mp3';
+            final silArgs = [
+              '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+              '-t', silDur.toString(),
+              '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+              silPath, '-y', '-v', 'error',
+            ];
+            final rs = await Process.run('ffmpeg', silArgs);
+            if (rs.exitCode != 0) {
+              return {'success': false, 'message': 'Silence failed: ${rs.stderr}', 'outputPath': null};
+            }
+            partFiles.add(silPath);
+          }
+        }
+
+        if (i < inputs.length - 1) {
+          final interSilDur = 1.0;
+          if (interSilDur > 0) {
+            final interPath = '${tempDir.path}${Platform.pathSeparator}m_inter_${idx++}.mp3';
+            final interArgs = [
+              '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+              '-t', interSilDur.toString(),
+              '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+              interPath, '-y', '-v', 'error',
+            ];
+            final ri = await Process.run('ffmpeg', interArgs);
+            if (ri.exitCode != 0) {
+              return {'success': false, 'message': 'Inter-file silence failed: ${ri.stderr}', 'outputPath': null};
+            }
+            partFiles.add(interPath);
+          }
+        }
+      }
+
+      final concatList = File('${tempDir.path}${Platform.pathSeparator}m_concat.txt');
+      concatList.writeAsStringSync(
+        partFiles.map((f) {
+          final p = f.replaceAll('\\', '/').replaceAll("'", "'\\''");
+          return "file '$p'";
+        }).join('\n'),
+      );
+
+      final concatArgs = [
+        '-f', 'concat', '-safe', '0',
+        '-i', concatList.path.replaceAll('\\', '/'),
+        '-c:a', 'libmp3lame', '-b:a', encoderBitrate,
+        outputPath.replaceAll('\\', '/'),
+        '-y', '-v', 'error',
+      ];
+      final res = await Process.run('ffmpeg', concatArgs);
+      if (res.exitCode == 0 && File(outputPath).existsSync()) {
+        return {'success': true, 'message': 'Extraction successful', 'outputPath': outputPath};
+      } else {
+        return {'success': false, 'message': 'Concat failed: ${res.stderr}', 'outputPath': null};
+      }
+    } catch (e, st) {
+      logger.e('Desktop multi-input failed: $e\n$st');
+      return {'success': false, 'message': 'FFmpeg error: $e', 'outputPath': null};
+    } finally {
+      try { tempDir.deleteSync(recursive: true); } catch (_) {}
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Helpers
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
 
   static String _q(String path) => '"${path.replaceAll('\\', '/')}"';
 
   static Future<Directory> _tempDir() async {
-    // A simple cross-platform temp dir selector.
-    if (Platform.isAndroid || Platform.isIOS) {
-      // On mobile, use the application cache directory exposed by dart:io.
-      return Directory.systemTemp;
-    }
+    // If you prefer path_provider on mobile, you can change this later.
     return Directory.systemTemp;
   }
 }

@@ -1,7 +1,8 @@
+// lib/views/widgets/add_segment_dialog.dart
 import 'package:flutter/material.dart';
 import '../../models/audio_segment.dart';
-import '../../utils/time_format_util.dart'; // Use shared util
-import '../audio_extractor_view.dart';      // For TimeTextInputFormatter
+import '../../utils/time_format_util.dart';
+import '../../utils/time_text_input_formatter.dart';
 
 class AddSegmentDialog extends StatefulWidget {
   final double maxDuration;
@@ -36,7 +37,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
       text: TimeFormatUtil.formatSeconds(widget.existingSegment?.silenceDuration ?? 0),
     );
     _titleController = TextEditingController(
-      text:(widget.existingSegment?.title ?? ""));
+      text: (widget.existingSegment?.title ?? ""),
+    );
   }
 
   @override
@@ -44,6 +46,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     _startController.dispose();
     _endController.dispose();
     _silenceController.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 
@@ -51,6 +54,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     final start = TimeFormatUtil.parseFlexible(_startController.text);
     final end = TimeFormatUtil.parseFlexible(_endController.text);
     final silence = TimeFormatUtil.parseFlexible(_silenceController.text);
+    final title = _titleController.text.trim();
 
     if (start < 0 || start >= widget.maxDuration) {
       _showError('Start position must be between 0 and ${TimeFormatUtil.formatSeconds(widget.maxDuration)}');
@@ -64,12 +68,16 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
       _showError('Silence duration cannot be negative');
       return;
     }
+    if (title.isEmpty) {
+      _showError('Title cannot be empty');
+      return;
+    }
 
     Navigator.of(context).pop(AudioSegment(
       startPosition: start,
       endPosition: end,
       silenceDuration: silence,
-      title: _titleController.text,
+      title: title,
     ));
   }
 
@@ -87,8 +95,17 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Title',
+                hintText: 'Short label for this segment',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
             Text('Max duration: ${TimeFormatUtil.formatSeconds(widget.maxDuration)}'),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             TextField(
               controller: _startController,
               inputFormatters: [TimeTextInputFormatter()],

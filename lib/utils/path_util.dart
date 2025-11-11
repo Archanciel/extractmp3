@@ -1,3 +1,4 @@
+// lib/utils/path_util.dart
 import 'dart:io';
 
 class PathUtil {
@@ -5,19 +6,13 @@ class PathUtil {
   static final RegExp _dots = RegExp(r'[. ]+$');
 
   static String sanitizeFileName(String name) {
-    // Replace illegal chars with '-'
     String n = name.replaceAll(_illegal, '-');
-    // Collapse multiple spaces/dashes
     n = n.replaceAll(RegExp(r'\s+'), ' ').replaceAll(RegExp(r'-{2,}'), '-').trim();
-    // Remove trailing dots/spaces (Windows)
     n = n.replaceAll(_dots, '');
-    // Guard empty
     if (n.isEmpty) n = 'output.mp3';
-    // Ensure extension for mp3
     if (!n.toLowerCase().endsWith('.mp3')) n = '$n.mp3';
-    // Extra: limit length for Windows MAX_PATH (optional)
     if (Platform.isWindows && n.length > 180) {
-      final ext = '.mp3';
+      const ext = '.mp3';
       n = '${n.substring(0, 180 - ext.length)}$ext';
     }
     return n;
@@ -26,5 +21,11 @@ class PathUtil {
   static String fileName(String fullPath) {
     final sep = Platform.pathSeparator;
     return fullPath.split(sep).last;
+  }
+
+  /// Safely remove the last extension from a file name.
+  static String removeExtension(String fileName) {
+    final i = fileName.lastIndexOf('.');
+    return i > 0 ? fileName.substring(0, i) : fileName;
   }
 }
