@@ -27,7 +27,7 @@ Future<void> _setWindowsAppSizeAndPosition({bool isTest = true}) async {
       final Rect screenRect = screen.visibleFrame;
 
       // Définissez la largeur et la hauteur de votre fenêtre
-      double windowWidth = (isTest) ? 900 : 800;
+      double windowWidth = 1300;
       const double windowHeight = 1750;
 
       // Calculez la position X pour placer la fenêtre sur le côté droit de l'écran

@@ -455,12 +455,28 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                 leading: CircleAvatar(
                                   child: Text('${index + 1}'),
                                 ),
-                                title: Text(
-                                  '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
-                                  '${TimeFormatUtil.formatSeconds(s.endPosition)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                title: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s.title, // ← always required
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
+                                      '${TimeFormatUtil.formatSeconds(s.endPosition)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 subtitle: Text(
                                   'Duration: ${TimeFormatUtil.formatSeconds(s.duration)}'
