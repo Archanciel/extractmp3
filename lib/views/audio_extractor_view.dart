@@ -424,7 +424,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           context: context,
                           audioExtractorVM: vm,
                         ),
-                    child: const Text('Select MP3 File'),
+                    child: const Text('Select MP3 file'),
                   ),
                   const SizedBox(height: 16),
 
