@@ -34,7 +34,11 @@ class AudioExtractorVM extends ChangeNotifier {
     required String name,
     required double duration,
   }) {
-    _audioFile = AudioFile(path: path, name: name, duration: duration);
+    _audioFile = AudioFile(
+      path: path,
+      name: name,
+      duration: duration,
+    );
     _segments.clear();
     _extractionResult = ExtractionResult(
       status: ExtractionStatus.none,
@@ -45,8 +49,12 @@ class AudioExtractorVM extends ChangeNotifier {
 
   void addSegment(AudioSegment segment) {
     final normalized = AudioSegment(
-      startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
-      endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
+      startPosition: TimeFormatUtil.normalizeToTenths(
+        segment.startPosition,
+      ),
+      endPosition: TimeFormatUtil.normalizeToTenths(
+        segment.endPosition,
+      ),
       silenceDuration: TimeFormatUtil.normalizeToTenths(
         segment.silenceDuration,
       ),
@@ -59,8 +67,12 @@ class AudioExtractorVM extends ChangeNotifier {
   void updateSegment(int index, AudioSegment segment) {
     if (index >= 0 && index < _segments.length) {
       final normalized = AudioSegment(
-        startPosition: TimeFormatUtil.normalizeToTenths(segment.startPosition),
-        endPosition: TimeFormatUtil.normalizeToTenths(segment.endPosition),
+        startPosition: TimeFormatUtil.normalizeToTenths(
+          segment.startPosition,
+        ),
+        endPosition: TimeFormatUtil.normalizeToTenths(
+          segment.endPosition,
+        ),
         silenceDuration: TimeFormatUtil.normalizeToTenths(
           segment.silenceDuration,
         ),
@@ -119,13 +131,17 @@ class AudioExtractorVM extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        _extractionResult = ExtractionResult.success(result['outputPath']!);
+        _extractionResult = ExtractionResult.success(
+          result['outputPath']!,
+        );
       } else {
         _extractionResult = ExtractionResult.error(result['message']);
       }
       notifyListeners();
     } catch (e) {
-      _extractionResult = ExtractionResult.error('Error during extraction: $e');
+      _extractionResult = ExtractionResult.error(
+        'Error during extraction: $e',
+      );
       notifyListeners();
     }
   }
@@ -137,7 +153,8 @@ class AudioExtractorVM extends ChangeNotifier {
 
   // ── Multi-input mode (with per-input gain) ─────────────────────────────────
   final List<InputSegments> _multiInputs = [];
-  List<InputSegments> get multiInputs => List.unmodifiable(_multiInputs);
+  List<InputSegments> get multiInputs =>
+      List.unmodifiable(_multiInputs);
   bool get hasMultipleSources => _multiInputs.length > 1;
 
   void clearMultiInputs() {
@@ -157,7 +174,9 @@ class AudioExtractorVM extends ChangeNotifier {
                 startPosition: TimeFormatUtil.normalizeToTenths(
                   s.startPosition,
                 ),
-                endPosition: TimeFormatUtil.normalizeToTenths(s.endPosition),
+                endPosition: TimeFormatUtil.normalizeToTenths(
+                  s.endPosition,
+                ),
                 silenceDuration: TimeFormatUtil.normalizeToTenths(
                   s.silenceDuration,
                 ),
@@ -167,7 +186,11 @@ class AudioExtractorVM extends ChangeNotifier {
             .toList();
 
     _multiInputs.add(
-      InputSegments(inputPath: inputPath, segments: normalized, gainDb: gainDb),
+      InputSegments(
+        inputPath: inputPath,
+        segments: normalized,
+        gainDb: gainDb,
+      ),
     );
     notifyListeners();
   }
@@ -195,7 +218,10 @@ class AudioExtractorVM extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateMultiInputSegments(int index, List<AudioSegment> segments) {
+  void updateMultiInputSegments(
+    int index,
+    List<AudioSegment> segments,
+  ) {
     if (index < 0 || index >= _multiInputs.length) return;
     final normalized =
         segments
@@ -204,7 +230,9 @@ class AudioExtractorVM extends ChangeNotifier {
                 startPosition: TimeFormatUtil.normalizeToTenths(
                   s.startPosition,
                 ),
-                endPosition: TimeFormatUtil.normalizeToTenths(s.endPosition),
+                endPosition: TimeFormatUtil.normalizeToTenths(
+                  s.endPosition,
+                ),
                 silenceDuration: TimeFormatUtil.normalizeToTenths(
                   s.silenceDuration,
                 ),
@@ -245,12 +273,15 @@ class AudioExtractorVM extends ChangeNotifier {
     }
     try {
       startProcessing();
-      final result = await AudioExtractorService.extractFromMultipleInputs(
-        inputs: _multiInputs,
-        outputPath: outputPath,
-      );
+      final result =
+          await AudioExtractorService.extractFromMultipleInputs(
+            inputs: _multiInputs,
+            outputPath: outputPath,
+          );
       if (result['success'] == true) {
-        _extractionResult = ExtractionResult.success(result['outputPath']!);
+        _extractionResult = ExtractionResult.success(
+          result['outputPath']!,
+        );
       } else {
         _extractionResult = ExtractionResult.error(result['message']);
       }

@@ -20,7 +20,8 @@ class AudioExtractorView extends StatefulWidget {
   const AudioExtractorView({super.key});
 
   @override
-  State<AudioExtractorView> createState() => _AudioExtractorViewState();
+  State<AudioExtractorView> createState() =>
+      _AudioExtractorViewState();
 }
 
 class _AudioExtractorViewState extends State<AudioExtractorView> {
@@ -47,20 +48,31 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['mp3'],
+      final FilePickerResult? filePickerSelection = await FilePicker
+          .platform
+          .pickFiles(
+            type: FileType.custom,
+            allowedExtensions: const ['mp3'],
+          );
+
+      if (filePickerSelection == null ||
+          filePickerSelection.files.single.path == null) {
+        return;
+      }
+
+      final String path = filePickerSelection.files.single.path!;
+      final String name = filePickerSelection.files.single.name;
+
+      final double duration =
+          await AudioExtractorService.getAudioDuration(
+            filePath: path,
+          );
+
+      audioExtractorVM.setAudioFile(
+        path: path,
+        name: name,
+        duration: duration,
       );
-      if (result == null || result.files.single.path == null) return;
-
-      final String path = result.files.single.path!;
-      final String name = result.files.single.name;
-
-      final double duration = await AudioExtractorService.getAudioDuration(
-        filePath: path,
-      );
-
-      audioExtractorVM.setAudioFile(path: path, name: name, duration: duration);
     } catch (e) {
       audioExtractorVM.setError('Error selecting file: $e');
     }
@@ -71,52 +83,65 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      if (audioExtractorVM.audioFile.path == null) {
-        audioExtractorVM.setError('Please select an MP3 file first');
+      final FilePickerResult? filePickerResultFilePickerSelection =
+          await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: const ['json'],
+          );
+
+      if (filePickerResultFilePickerSelection == null ||
+          filePickerResultFilePickerSelection.files.single.path ==
+              null) {
         return;
       }
 
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
-      );
-      if (result == null || result.files.single.path == null) return;
-
-      final String jsonPath = result.files.single.path!;
-      final List<Comment> comments = JsonDataService.loadListFromFile<Comment>(
-        jsonPathFileName: jsonPath,
-        type: Comment,
-      );
+      final String jsonPath =
+          filePickerResultFilePickerSelection.files.single.path!;
+      final List<Comment> comments =
+          JsonDataService.loadListFromFile<Comment>(
+            jsonPathFileName: jsonPath,
+            type: Comment,
+          );
 
       if (comments.isEmpty) {
-        if (!context.mounted) return;
+        if (!context.mounted) {
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No comments found in the selected file'),
             backgroundColor: Colors.orange,
           ),
         );
+
         return;
       }
 
-      int added = 0, skipped = 0;
+      int added = 0;
+      int skipped = 0;
+
       for (int i = 0; i < comments.length; i++) {
-        final c = comments[i];
-        final double start = c.commentStartPositionInTenthOfSeconds / 10.0;
-        final double end = c.commentEndPositionInTenthOfSeconds / 10.0;
+        final Comment comment = comments[i];
+        final double start =
+            comment.commentStartPositionInTenthOfSeconds / 10.0;
+        final double end =
+            comment.commentEndPositionInTenthOfSeconds / 10.0;
 
         if (start >= 0 &&
             end > start &&
             audioExtractorVM.audioFile.duration > 0 &&
             end <= audioExtractorVM.audioFile.duration) {
           final silence =
-              (i < comments.length - 1) ? kDefaultSilenceDuration : 0.0;
+              (i < comments.length - 1)
+                  ? kDefaultSilenceDuration
+                  : 0.0;
           audioExtractorVM.addSegment(
             AudioSegment(
               startPosition: start,
               endPosition: end,
               silenceDuration: silence,
-              title: c.title,
+              title: comment.title,
             ),
           );
           added++;
@@ -125,7 +150,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
         }
       }
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -149,72 +177,83 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }
 
   Future<void> _extractMP3({required BuildContext context}) async {
-    final vm = context.read<AudioExtractorVM>();
-    final player = context.read<AudioPlayerVM>();
+    final AudioExtractorVM audioExtractorVM = context.read<AudioExtractorVM>();
+    final AudioPlayerVM audioPlayerVM = context.read<AudioPlayerVM>();
 
-    if (vm.multiInputs.isEmpty) {
-      if (vm.audioFile.path == null) {
-        vm.setError('Please select an MP3 file first');
+    if (audioExtractorVM.multiInputs.isEmpty) {
+      if (audioExtractorVM.audioFile.path == null) {
+        audioExtractorVM.setError('Please select an MP3 file first');
+
         return;
       }
-      if (vm.segments.isEmpty) {
-        vm.setError('Please add at least one segment');
+
+      if (audioExtractorVM.segments.isEmpty) {
+        audioExtractorVM.setError('Please add at least one segment');
+
         return;
       }
     }
 
     try {
-      if (Platform.isWindows && player.isLoaded) {
+      if (Platform.isWindows && audioPlayerVM.isLoaded) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Preparing extraction...'),
             duration: Duration(seconds: 1),
           ),
         );
-        await player.releaseCurrentFile();
+
+        await audioPlayerVM.releaseCurrentFile();
         await Future.delayed(const Duration(milliseconds: 500));
       }
 
       final String base = PathUtil.removeExtension(
-        vm.audioFile.name ?? 'extract',
+        audioExtractorVM.audioFile.name ?? 'extract',
       );
 
-      String suggested;
-      if (vm.multiInputs.isNotEmpty) {
-        final totalSegs = vm.multiInputs.fold<int>(
+      String extractedMp3FileName;
+
+      if (audioExtractorVM.multiInputs.isNotEmpty) {
+        final totalSegs = audioExtractorVM.multiInputs.fold<int>(
           0,
           (n, i) => n + i.segments.length,
         );
-        suggested = '${base}_multi_${totalSegs}_segments.mp3';
-      } else if (vm.segments.length == 1) {
-        suggested =
-            '$base from ${TimeFormatUtil.formatSeconds(vm.segments[0].startPosition)} '
-            'to ${TimeFormatUtil.formatSeconds(vm.segments[0].endPosition)}.mp3';
+        extractedMp3FileName = '${base}_multi_${totalSegs}_segments.mp3';
+      } else if (audioExtractorVM.segments.length == 1) {
+        extractedMp3FileName =
+            '$base from ${TimeFormatUtil.formatSeconds(audioExtractorVM.segments[0].startPosition)} '
+            'to ${TimeFormatUtil.formatSeconds(audioExtractorVM.segments[0].endPosition)}.mp3';
       } else {
-        suggested = '${base}_${vm.segments.length}_segments.mp3';
+        extractedMp3FileName = '${base}_${audioExtractorVM.segments.length}_segments.mp3';
       }
 
-      suggested = PathUtil.sanitizeFileName(suggested);
+      extractedMp3FileName = PathUtil.sanitizeFileName(extractedMp3FileName);
 
-      final String? dir = await FilePicker.platform.getDirectoryPath();
-      if (dir == null) {
-        vm.setError('Save location selection canceled');
+      final String? extractedMp3DestinationDir =
+          await FilePicker.platform.getDirectoryPath();
+      if (extractedMp3DestinationDir == null) {
+        audioExtractorVM.setError('Save location selection canceled');
+
         return;
       }
 
-      final String outputPath = '$dir${Platform.pathSeparator}$suggested';
+      final String outputPath =
+          '$extractedMp3DestinationDir${Platform.pathSeparator}$extractedMp3FileName';
 
-      if (vm.multiInputs.isNotEmpty) {
-        await vm.extractMP3Multi(outputPath);
+      if (audioExtractorVM.multiInputs.isNotEmpty) {
+        await audioExtractorVM.extractMP3Multi(outputPath);
       } else {
-        await vm.extractMP3(outputPath);
+        await audioExtractorVM.extractMP3(outputPath);
       }
     } catch (e) {
-      vm.setError('Error selecting save location: $e');
+      audioExtractorVM.setError('Error selecting save location: $e');
     }
   }
 
-  Future<void> _playExtractedFile(BuildContext context, String filePath) async {
+  Future<void> _playExtractedFile(
+    BuildContext context,
+    String filePath,
+  ) async {
     final audioPlayerVM = context.read<AudioPlayerVM>();
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     try {
@@ -266,7 +305,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       if (res == null || res.files.single.path == null) return;
 
       final inputPath = res.files.single.path!;
-      vm.addMultiInput(inputPath: inputPath, segments: const [], gainDb: 0.0);
+      vm.addMultiInput(
+        inputPath: inputPath,
+        segments: const [],
+        gainDb: 0.0,
+      );
     } catch (e) {
       vm.setError('Error selecting source: $e');
     }
@@ -302,7 +345,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
 
       final picked = await showDialog<List<Comment>>(
         context: context,
-        builder: (_) => _MultiSelectCommentsDialog(comments: comments),
+        builder:
+            (_) => _MultiSelectCommentsDialog(comments: comments),
       );
       if (picked == null || picked.isEmpty) return;
 
@@ -381,7 +425,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       }
                       return Column(
                         children: [
-                          for (int i = 0; i < vm.multiInputs.length; i++)
+                          for (
+                            int i = 0;
+                            i < vm.multiInputs.length;
+                            i++
+                          )
                             Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
@@ -389,16 +437,24 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                   index: i,
                                   input: vm.multiInputs[i],
                                   totalSegments:
-                                      vm.multiInputs[i].segments.length,
-                                  onRemove: () => vm.removeMultiInput(i),
+                                      vm
+                                          .multiInputs[i]
+                                          .segments
+                                          .length,
+                                  onRemove:
+                                      () => vm.removeMultiInput(i),
                                   onLoadComments:
-                                      () => _loadAndPickCommentsForSource(
-                                        context,
-                                        i,
-                                      ),
+                                      () =>
+                                          _loadAndPickCommentsForSource(
+                                            context,
+                                            i,
+                                          ),
                                   onGainChanged:
                                       (gainDb) =>
-                                          vm.updateMultiInputGain(i, gainDb),
+                                          vm.updateMultiInputGain(
+                                            i,
+                                            gainDb,
+                                          ),
                                 ),
                               ),
                             ),
@@ -444,11 +500,15 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                             onPressed:
                                 vm.audioFile.path == null
                                     ? null
-                                    : () => _loadSegmentsFromCommentFile(
-                                      context: context,
-                                      audioExtractorVM: vm,
-                                    ),
-                            icon: const Icon(Icons.file_open, size: 18),
+                                    : () =>
+                                        _loadSegmentsFromCommentFile(
+                                          context: context,
+                                          audioExtractorVM: vm,
+                                        ),
+                            icon: const Icon(
+                              Icons.file_open,
+                              size: 18,
+                            ),
                             label: const Text('Load from comments'),
                           ),
                           const SizedBox(height: 8),
@@ -458,12 +518,18 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                     ? null
                                     : () async {
                                       final segment =
-                                          await showDialog<AudioSegment>(
+                                          await showDialog<
+                                            AudioSegment
+                                          >(
                                             context: context,
                                             builder:
-                                                (_) => AddSegmentDialog(
+                                                (
+                                                  _,
+                                                ) => AddSegmentDialog(
                                                   maxDuration:
-                                                      vm.audioFile.duration,
+                                                      vm
+                                                          .audioFile
+                                                          .duration,
                                                 ),
                                           );
                                       if (segment != null) {
@@ -496,9 +562,13 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     )
                   else
                     Container(
-                      constraints: const BoxConstraints(maxHeight: 240),
+                      constraints: const BoxConstraints(
+                        maxHeight: 240,
+                      ),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                        ),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Scrollbar(
@@ -521,7 +591,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                   child: Text('${index + 1}'),
                                 ),
                                 title: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       s.title,
@@ -551,20 +622,33 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons.edit, size: 20),
+                                      icon: const Icon(
+                                        Icons.edit,
+                                        size: 20,
+                                      ),
                                       onPressed: () async {
                                         final updated =
-                                            await showDialog<AudioSegment>(
+                                            await showDialog<
+                                              AudioSegment
+                                            >(
                                               context: context,
                                               builder:
-                                                  (_) => AddSegmentDialog(
+                                                  (
+                                                    _,
+                                                  ) => AddSegmentDialog(
                                                     maxDuration:
-                                                        vm.audioFile.duration,
-                                                    existingSegment: s,
+                                                        vm
+                                                            .audioFile
+                                                            .duration,
+                                                    existingSegment:
+                                                        s,
                                                   ),
                                             );
                                         if (updated != null) {
-                                          vm.updateSegment(index, updated);
+                                          vm.updateSegment(
+                                            index,
+                                            updated,
+                                          );
                                         }
                                       },
                                     ),
@@ -593,14 +677,19 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   if (vm.segments.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           'Total: ${TimeFormatUtil.formatSeconds(vm.totalDuration)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         TextButton.icon(
-                          onPressed: () => _confirmClearSegments(context, vm),
+                          onPressed:
+                              () =>
+                                  _confirmClearSegments(context, vm),
                           icon: const Icon(Icons.clear_all, size: 18),
                           label: const Text('Clear All'),
                           style: TextButton.styleFrom(
@@ -710,12 +799,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           SliderTheme(
             data: const SliderThemeData(
               trackHeight: 4,
-              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 8),
+              thumbShape: RoundSliderThumbShape(
+                enabledThumbRadius: 8,
+              ),
             ),
             child: Slider(
               value: audioPlayerVM.progressPercent.clamp(0.0, 1.0),
               onChanged:
-                  (value) => audioPlayerVM.seekByPercentage(percentage: value),
+                  (value) => audioPlayerVM.seekByPercentage(
+                    percentage: value,
+                  ),
             ),
           ),
           Padding(
@@ -723,15 +816,26 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(TimeFormatUtil.formatDuration(audioPlayerVM.position)),
-                Text(TimeFormatUtil.formatDuration(audioPlayerVM.duration)),
+                Text(
+                  TimeFormatUtil.formatDuration(
+                    audioPlayerVM.position,
+                  ),
+                ),
+                Text(
+                  TimeFormatUtil.formatDuration(
+                    audioPlayerVM.duration,
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Playing: ${PathUtil.fileName(audioExtractorVM.extractionResult.outputPath!)}',
-            style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+            style: const TextStyle(
+              fontStyle: FontStyle.italic,
+              fontSize: 12,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -767,7 +871,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
                 onPressed: () {
                   vm.removeSegment(index);
                   Navigator.of(context).pop();
@@ -779,20 +885,27 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     );
   }
 
-  void _confirmClearSegments(BuildContext context, AudioExtractorVM vm) {
+  void _confirmClearSegments(
+    BuildContext context,
+    AudioExtractorVM vm,
+  ) {
     showDialog(
       context: context,
       builder:
           (_) => AlertDialog(
             title: const Text('Clear All Segments'),
-            content: const Text('Are you sure you want to clear all segments?'),
+            content: const Text(
+              'Are you sure you want to clear all segments?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
                 onPressed: () {
                   vm.clearSegments();
                   Navigator.of(context).pop();
@@ -879,7 +992,9 @@ class _SourceRow extends StatelessWidget {
           max: 12.0,
           divisions: 48, // 0.5 dB steps
           label: '${gainDb.toStringAsFixed(1)} dB',
-          onChanged: (v) => onGainChanged(double.parse(v.toStringAsFixed(1))),
+          onChanged:
+              (v) =>
+                  onGainChanged(double.parse(v.toStringAsFixed(1))),
         ),
       ],
     );
@@ -920,11 +1035,13 @@ class _MultiSelectCommentsDialogState
           itemCount: widget.comments.length,
           itemBuilder: (_, i) {
             final c = widget.comments[i];
-            final start = (c.commentStartPositionInTenthOfSeconds / 10.0);
+            final start =
+                (c.commentStartPositionInTenthOfSeconds / 10.0);
             final end = (c.commentEndPositionInTenthOfSeconds / 10.0);
             return CheckboxListTile(
               value: _checked[i],
-              onChanged: (v) => setState(() => _checked[i] = v ?? false),
+              onChanged:
+                  (v) => setState(() => _checked[i] = v ?? false),
               title: Text(
                 c.title,
                 maxLines: 1,
