@@ -390,7 +390,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
-          builder: (context, vm, player, _) {
+          builder: (context, audioExtractorVM, audioPlayerVM, _) {
             return SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -478,7 +478,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     onPressed:
                         () => _pickMP3File(
                           context: context,
-                          audioExtractorVM: vm,
+                          audioExtractorVM: audioExtractorVM,
                         ),
                     child: const Text('Select MP3 file'),
                   ),
@@ -488,7 +488,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Segments (${vm.segmentCount})',
+                        'Segments (${audioExtractorVM.segmentCount})',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -498,12 +498,12 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         children: [
                           ElevatedButton.icon(
                             onPressed:
-                                vm.audioFile.path == null
+                                audioExtractorVM.audioFile.path == null
                                     ? null
                                     : () =>
                                         _loadSegmentsFromCommentFile(
                                           context: context,
-                                          audioExtractorVM: vm,
+                                          audioExtractorVM: audioExtractorVM,
                                         ),
                             icon: const Icon(
                               Icons.file_open,
@@ -514,9 +514,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
                             onPressed:
-                                vm.audioFile.path == null
+                                audioExtractorVM.audioFile.path == null
                                     ? null
                                     : () async {
+                                      // After pressing 'Add manually' text button
                                       final segment =
                                           await showDialog<
                                             AudioSegment
@@ -527,13 +528,13 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                                   _,
                                                 ) => AddSegmentDialog(
                                                   maxDuration:
-                                                      vm
+                                                      audioExtractorVM
                                                           .audioFile
                                                           .duration,
                                                 ),
                                           );
                                       if (segment != null) {
-                                        vm.addSegment(segment);
+                                        audioExtractorVM.addSegment(segment);
                                       }
                                     },
                             icon: const Icon(Icons.add, size: 18),
@@ -545,7 +546,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   ),
                   const SizedBox(height: 8),
 
-                  if (vm.segments.isEmpty)
+                  if (audioExtractorVM.segments.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -578,9 +579,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           controller: _segmentsScrollController,
                           primary: false,
                           shrinkWrap: true,
-                          itemCount: vm.segments.length,
+                          itemCount: audioExtractorVM.segments.length,
                           itemBuilder: (context, index) {
-                            final s = vm.segments[index];
+                            final s = audioExtractorVM.segments[index];
                             return Card(
                               margin: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -596,7 +597,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                   children: [
                                     Text(
                                       s.title,
-                                      maxLines: 1,
+                                      maxLines: 4,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
@@ -627,6 +628,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                         size: 20,
                                       ),
                                       onPressed: () async {
+                                       // After pressing 'Edit' icon button                                       
                                         final updated =
                                             await showDialog<
                                               AudioSegment
@@ -637,7 +639,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                                     _,
                                                   ) => AddSegmentDialog(
                                                     maxDuration:
-                                                        vm
+                                                        audioExtractorVM
                                                             .audioFile
                                                             .duration,
                                                     existingSegment:
@@ -645,7 +647,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                                   ),
                                             );
                                         if (updated != null) {
-                                          vm.updateSegment(
+                                          audioExtractorVM.updateSegment(
                                             index,
                                             updated,
                                           );
@@ -661,7 +663,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                       onPressed:
                                           () => _confirmDeleteSegment(
                                             context,
-                                            vm,
+                                            audioExtractorVM,
                                             index,
                                           ),
                                     ),
@@ -674,14 +676,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       ),
                     ),
 
-                  if (vm.segments.isNotEmpty) ...[
+                  if (audioExtractorVM.segments.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment:
                           MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Total: ${TimeFormatUtil.formatSeconds(vm.totalDuration)}',
+                          'Total: ${TimeFormatUtil.formatSeconds(audioExtractorVM.totalDuration)}',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                           ),
@@ -689,7 +691,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         TextButton.icon(
                           onPressed:
                               () =>
-                                  _confirmClearSegments(context, vm),
+                                  _confirmClearSegments(context, audioExtractorVM),
                           icon: const Icon(Icons.clear_all, size: 18),
                           label: const Text('Clear All'),
                           style: TextButton.styleFrom(
@@ -703,26 +705,26 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed:
-                        vm.extractionResult.isProcessing
+                        audioExtractorVM.extractionResult.isProcessing
                             ? null
                             : () => _extractMP3(context: context),
                     child: const Text('Extract MP3'),
                   ),
 
                   const SizedBox(height: 16),
-                  if (vm.extractionResult.isProcessing)
+                  if (audioExtractorVM.extractionResult.isProcessing)
                     const Center(child: CircularProgressIndicator()),
 
-                  if (vm.extractionResult.hasMessage)
+                  if (audioExtractorVM.extractionResult.hasMessage)
                     Padding(
                       padding: const EdgeInsets.only(top: 16.0),
                       child: Text(
-                        vm.extractionResult.message,
+                        audioExtractorVM.extractionResult.message,
                         style: TextStyle(
                           color:
-                              vm.extractionResult.isError
+                              audioExtractorVM.extractionResult.isError
                                   ? Colors.red
-                                  : vm.extractionResult.isSuccess
+                                  : audioExtractorVM.extractionResult.isSuccess
                                   ? Colors.green[700]
                                   : Colors.black,
                           fontSize: 14,
@@ -731,8 +733,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       ),
                     ),
 
-                  if (vm.extractionResult.isSuccess &&
-                      vm.extractionResult.outputPath != null) ...[
+                  if (audioExtractorVM.extractionResult.isSuccess &&
+                      audioExtractorVM.extractionResult.outputPath != null) ...[
                     const Divider(height: 32),
                     const Text(
                       'Audio Player',
@@ -744,8 +746,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     const SizedBox(height: 8),
                     _buildAudioPlayerControls(
                       context: context,
-                      audioExtractorVM: vm,
-                      audioPlayerVM: player,
+                      audioExtractorVM: audioExtractorVM,
+                      audioPlayerVM: audioPlayerVM,
                     ),
                   ],
                 ],
@@ -922,7 +924,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       context: context,
       builder:
           (_) => AlertDialog(
-            title: Text('MP3 Extractor $kApplicationVersion'),
+            title: const Text('MP3 Extractor $kApplicationVersion'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),

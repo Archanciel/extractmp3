@@ -1,9 +1,9 @@
-class AudioFile {
+class ExtractMp3AudioFile {
   final String? path;
   final String? name;
   final double duration;
 
-  AudioFile({
+  ExtractMp3AudioFile({
     this.path,
     this.name,
     this.duration = 60.0, // Default duration

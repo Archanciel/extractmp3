@@ -28,16 +28,22 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   void initState() {
     super.initState();
     _startController = TextEditingController(
-      text: TimeFormatUtil.formatSeconds(widget.existingSegment?.startPosition ?? 0),
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.startPosition ?? 0,
+      ),
     );
     _endController = TextEditingController(
-      text: TimeFormatUtil.formatSeconds(widget.existingSegment?.endPosition ?? 0),
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.endPosition ?? 0,
+      ),
     );
     _silenceController = TextEditingController(
-      text: TimeFormatUtil.formatSeconds(widget.existingSegment?.silenceDuration ?? 0),
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.silenceDuration ?? 0,
+      ),
     );
     _titleController = TextEditingController(
-      text: (widget.existingSegment?.title ?? ""),
+      text: (widget.existingSegment?.title ?? ''),
     );
   }
 
@@ -53,15 +59,21 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   void _saveSegment() {
     final start = TimeFormatUtil.parseFlexible(_startController.text);
     final end = TimeFormatUtil.parseFlexible(_endController.text);
-    final silence = TimeFormatUtil.parseFlexible(_silenceController.text);
+    final silence = TimeFormatUtil.parseFlexible(
+      _silenceController.text,
+    );
     final title = _titleController.text.trim();
 
     if (start < 0 || start >= widget.maxDuration) {
-      _showError('Start position must be between 0 and ${TimeFormatUtil.formatSeconds(widget.maxDuration)}');
+      _showError(
+        'Start position must be between 0 and ${TimeFormatUtil.formatSeconds(widget.maxDuration)}',
+      );
       return;
     }
     if (end <= start || end > widget.maxDuration) {
-      _showError('End position must be after start and not exceed ${TimeFormatUtil.formatSeconds(widget.maxDuration)}');
+      _showError(
+        'End position must be after start and not exceed ${TimeFormatUtil.formatSeconds(widget.maxDuration)}',
+      );
       return;
     }
     if (silence < 0) {
@@ -73,12 +85,14 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
       return;
     }
 
-    Navigator.of(context).pop(AudioSegment(
-      startPosition: start,
-      endPosition: end,
-      silenceDuration: silence,
-      title: title,
-    ));
+    Navigator.of(context).pop(
+      AudioSegment(
+        startPosition: start,
+        endPosition: end,
+        silenceDuration: silence,
+        title: title,
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -90,7 +104,11 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existingSegment != null ? 'Edit Segment' : 'Add Segment'),
+      title: Text(
+        widget.existingSegment != null
+            ? 'Edit Segment'
+            : 'Add Segment',
+      ),
       content: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,9 +120,13 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
                 hintText: 'Short label for this segment',
                 border: OutlineInputBorder(),
               ),
+              minLines: 1,
+              maxLines: 4,
             ),
             const SizedBox(height: 12),
-            Text('Max duration: ${TimeFormatUtil.formatSeconds(widget.maxDuration)}'),
+            Text(
+              'Max duration: ${TimeFormatUtil.formatSeconds(widget.maxDuration)}',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _startController,
@@ -140,8 +162,14 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        ElevatedButton(onPressed: _saveSegment, child: const Text('Save')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _saveSegment,
+          child: const Text('Save'),
+        ),
       ],
     );
   }

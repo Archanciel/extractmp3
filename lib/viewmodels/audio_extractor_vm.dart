@@ -1,7 +1,7 @@
 // lib/viewmodels/audio_extractor_vm.dart
 import 'package:flutter/foundation.dart';
 
-import '../models/audio_file.dart';
+import '../models/extract_mp3_audio_file.dart';
 import '../models/audio_segment.dart';
 import '../models/extraction_result.dart';
 import '../services/audio_extractor_service.dart';
@@ -9,11 +9,11 @@ import '../utils/time_format_util.dart';
 
 class AudioExtractorVM extends ChangeNotifier {
   // ── Single-file mode (unchanged) ────────────────────────────────────────────
-  AudioFile _audioFile = AudioFile();
+  ExtractMp3AudioFile _audioFile = ExtractMp3AudioFile();
   final List<AudioSegment> _segments = [];
   ExtractionResult _extractionResult = ExtractionResult.initial();
 
-  AudioFile get audioFile => _audioFile;
+  ExtractMp3AudioFile get audioFile => _audioFile;
   List<AudioSegment> get segments => List.unmodifiable(_segments);
   ExtractionResult get extractionResult => _extractionResult;
 
@@ -34,7 +34,7 @@ class AudioExtractorVM extends ChangeNotifier {
     required String name,
     required double duration,
   }) {
-    _audioFile = AudioFile(
+    _audioFile = ExtractMp3AudioFile(
       path: path,
       name: name,
       duration: duration,

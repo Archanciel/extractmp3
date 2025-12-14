@@ -19,7 +19,7 @@ extension DurationExpansion on Duration {
       minusStr = '-';
     }
 
-    return "$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}";
+    return '$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}';
   }
 
   /// WARNING: this method is callable on a Duration instance only
@@ -52,10 +52,10 @@ extension DurationExpansion on Duration {
           inMilliseconds.remainder(1000).abs() ~/
               100; // the remaining tenth of second
 
-      return "$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}:${numberFormatTwoInt.format(durationSecond.abs())}.$remainingOneDigitTenthOfSecond";
+      return '$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}:${numberFormatTwoInt.format(durationSecond.abs())}.$remainingOneDigitTenthOfSecond';
     }
 
-    return "$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}:${numberFormatTwoInt.format(durationSecond.abs())}";
+    return '$minusStr${inHours.abs()}:${numberFormatTwoInt.format(durationMinute.abs())}:${numberFormatTwoInt.format(durationSecond.abs())}';
   }
 
   /// WARNING: this method is callable on a Duration instance only
@@ -74,7 +74,7 @@ extension DurationExpansion on Duration {
       minusStr = '-';
     }
 
-    return "$minusStr${numberFormatTwoInt.format(durationDay.abs())}:${numberFormatTwoInt.format(durationHour.abs())}:${numberFormatTwoInt.format(durationMinute.abs())}";
+    return '$minusStr${numberFormatTwoInt.format(durationDay.abs())}:${numberFormatTwoInt.format(durationHour.abs())}:${numberFormatTwoInt.format(durationMinute.abs())}';
   }
 
   /// WARNING: this method is callable on a Duration instance only
@@ -158,9 +158,9 @@ extension DurationExpansion on Duration {
 
   String twoDigits(int n) {
     if (n >= 10) {
-      return "$n";
+      return '$n';
     }
 
-    return "0$n";
+    return '0$n';
   }
 }
