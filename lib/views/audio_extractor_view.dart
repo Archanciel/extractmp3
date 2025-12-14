@@ -31,6 +31,20 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   void initState() {
     super.initState();
     _segmentsScrollController = ScrollController();
+    final AudioExtractorVM audioExtractorVM =
+        context.read<AudioExtractorVM>();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _pickMP3File(
+        context: context,
+        audioExtractorVM: audioExtractorVM,
+      );
+
+      await _loadSegmentsFromCommentFile(
+        context: context,
+        audioExtractorVM: audioExtractorVM,
+      );
+    });
   }
 
   @override
@@ -48,21 +62,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      final FilePickerResult? filePickerSelection = await FilePicker
-          .platform
-          .pickFiles(
-            type: FileType.custom,
-            allowedExtensions: const ['mp3'],
-          );
-
-      if (filePickerSelection == null ||
-          filePickerSelection.files.single.path == null) {
-        return;
-      }
-
-      final String path = filePickerSelection.files.single.path!;
-      final String name = filePickerSelection.files.single.name;
-
+      const String path =
+          "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
+      const String name =
+          "250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
       final double duration =
           await AudioExtractorService.getAudioDuration(
             filePath: path,
@@ -83,20 +86,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      final FilePickerResult? filePickerResultFilePickerSelection =
-          await FilePicker.platform.pickFiles(
-            type: FileType.custom,
-            allowedExtensions: const ['json'],
-          );
-
-      if (filePickerResultFilePickerSelection == null ||
-          filePickerResultFilePickerSelection.files.single.path ==
-              null) {
-        return;
-      }
-
-      final String jsonPath =
-          filePickerResultFilePickerSelection.files.single.path!;
+      const String jsonPath =
+          "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\comments\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
       final List<Comment> comments =
           JsonDataService.loadListFromFile<Comment>(
             jsonPathFileName: jsonPath,
@@ -326,13 +317,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   ) async {
     final vm = context.read<AudioExtractorVM>();
     try {
-      final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
-      );
-      if (res == null || res.files.single.path == null) return;
-
-      final jsonPath = res.files.single.path!;
+      const jsonPath =
+          "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\comments\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
       final comments = JsonDataService.loadListFromFile<Comment>(
         jsonPathFileName: jsonPath,
         type: Comment,
@@ -400,95 +386,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── Multi-sources section ───────────────────────────────────
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Sources (multi-files)',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () => _addSource(context),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add MP3 file'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Consumer<AudioExtractorVM>(
-                    builder: (context, vm, _) {
-                      if (vm.multiInputs.isEmpty) {
-                        return const Text(
-                          'No extra sources. Use “Add MP3 Source” and adjust per-source volume if needed.\n'
-                          'If you keep only one source (or none here), the single-file section below stays active.',
-                          style: TextStyle(color: Colors.grey),
-                        );
-                      }
-                      return Column(
-                        children: [
-                          for (
-                            int i = 0;
-                            i < vm.multiInputs.length;
-                            i++
-                          )
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: _SourceRow(
-                                  index: i,
-                                  input: vm.multiInputs[i],
-                                  totalSegments:
-                                      vm
-                                          .multiInputs[i]
-                                          .segments
-                                          .length,
-                                  onRemove:
-                                      () => vm.removeMultiInput(i),
-                                  onLoadComments:
-                                      () =>
-                                          _loadAndPickCommentsForSource(
-                                            context,
-                                            i,
-                                          ),
-                                  onGainChanged:
-                                      (gainDb) =>
-                                          vm.updateMultiInputGain(
-                                            i,
-                                            gainDb,
-                                          ),
-                                ),
-                              ),
-                            ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              'Total (multi): ${TimeFormatUtil.formatSeconds(vm.totalDurationMulti)}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const Divider(height: 24),
-                        ],
-                      );
-                    },
-                  ),
-
-                  // ── Single-file section (unchanged) ────────────────────────
-                  ElevatedButton(
-                    onPressed:
-                        () => _pickMP3File(
-                          context: context,
-                          audioExtractorVM: audioExtractorVM,
-                        ),
-                    child: const Text('Select MP3 file'),
-                  ),
-                  const SizedBox(height: 16),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -498,59 +395,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
-                      ),
-                      Column(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed:
-                                audioExtractorVM.audioFile.path ==
-                                        null
-                                    ? null
-                                    : () =>
-                                        _loadSegmentsFromCommentFile(
-                                          context: context,
-                                          audioExtractorVM:
-                                              audioExtractorVM,
-                                        ),
-                            icon: const Icon(
-                              Icons.file_open,
-                              size: 18,
-                            ),
-                            label: const Text('Load from comments'),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed:
-                                audioExtractorVM.audioFile.path ==
-                                        null
-                                    ? null
-                                    : () async {
-                                      // After pressing 'Add manually' text button
-                                      final segment =
-                                          await showDialog<
-                                            AudioSegment
-                                          >(
-                                            context: context,
-                                            builder:
-                                                (
-                                                  _,
-                                                ) => AddSegmentDialog(
-                                                  maxDuration:
-                                                      audioExtractorVM
-                                                          .audioFile
-                                                          .duration,
-                                                ),
-                                          );
-                                      if (segment != null) {
-                                        audioExtractorVM.addSegment(
-                                          segment,
-                                        );
-                                      }
-                                    },
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add manually'),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -572,7 +416,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                       )
                       : Container(
                         constraints: const BoxConstraints(
-                          maxHeight: 240,
+                          maxHeight: 400,
                         ),
                         decoration: BoxDecoration(
                           border: Border.all(
@@ -753,14 +597,6 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                   if (audioExtractorVM.extractionResult.isSuccess &&
                       audioExtractorVM.extractionResult.outputPath !=
                           null) ...[
-                    const Divider(height: 32),
-                    const Text(
-                      'Audio Player',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
                     const SizedBox(height: 8),
                     _buildAudioPlayerControls(
                       context: context,
