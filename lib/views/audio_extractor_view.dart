@@ -177,7 +177,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   }
 
   Future<void> _extractMP3({required BuildContext context}) async {
-    final AudioExtractorVM audioExtractorVM = context.read<AudioExtractorVM>();
+    final AudioExtractorVM audioExtractorVM =
+        context.read<AudioExtractorVM>();
     final AudioPlayerVM audioPlayerVM = context.read<AudioPlayerVM>();
 
     if (audioExtractorVM.multiInputs.isEmpty) {
@@ -218,16 +219,20 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           0,
           (n, i) => n + i.segments.length,
         );
-        extractedMp3FileName = '${base}_multi_${totalSegs}_segments.mp3';
+        extractedMp3FileName =
+            '${base}_multi_${totalSegs}_segments.mp3';
       } else if (audioExtractorVM.segments.length == 1) {
         extractedMp3FileName =
             '$base from ${TimeFormatUtil.formatSeconds(audioExtractorVM.segments[0].startPosition)} '
             'to ${TimeFormatUtil.formatSeconds(audioExtractorVM.segments[0].endPosition)}.mp3';
       } else {
-        extractedMp3FileName = '${base}_${audioExtractorVM.segments.length}_segments.mp3';
+        extractedMp3FileName =
+            '${base}_${audioExtractorVM.segments.length}_segments.mp3';
       }
 
-      extractedMp3FileName = PathUtil.sanitizeFileName(extractedMp3FileName);
+      extractedMp3FileName = PathUtil.sanitizeFileName(
+        extractedMp3FileName,
+      );
 
       final String? extractedMp3DestinationDir =
           await FilePicker.platform.getDirectoryPath();
@@ -498,12 +503,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         children: [
                           ElevatedButton.icon(
                             onPressed:
-                                audioExtractorVM.audioFile.path == null
+                                audioExtractorVM.audioFile.path ==
+                                        null
                                     ? null
                                     : () =>
                                         _loadSegmentsFromCommentFile(
                                           context: context,
-                                          audioExtractorVM: audioExtractorVM,
+                                          audioExtractorVM:
+                                              audioExtractorVM,
                                         ),
                             icon: const Icon(
                               Icons.file_open,
@@ -514,7 +521,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
                             onPressed:
-                                audioExtractorVM.audioFile.path == null
+                                audioExtractorVM.audioFile.path ==
+                                        null
                                     ? null
                                     : () async {
                                       // After pressing 'Add manually' text button
@@ -534,7 +542,9 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                                 ),
                                           );
                                       if (segment != null) {
-                                        audioExtractorVM.addSegment(segment);
+                                        audioExtractorVM.addSegment(
+                                          segment,
+                                        );
                                       }
                                     },
                             icon: const Icon(Icons.add, size: 18),
@@ -545,136 +555,137 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     ],
                   ),
                   const SizedBox(height: 8),
-
-                  if (audioExtractorVM.segments.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'No segments added yet.\nLoad from a comment file or add segments manually.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
+                  (audioExtractorVM.segments.isEmpty)
+                      ? Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                    )
-                  else
-                    Container(
-                      constraints: const BoxConstraints(
-                        maxHeight: 240,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.grey.shade300,
+                        child: const Center(
+                          child: Text(
+                            'No segments added yet.\nLoad from a comment file or add segments manually.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Scrollbar(
-                        controller: _segmentsScrollController,
-                        thumbVisibility: true,
-                        child: ListView.builder(
+                      )
+                      : Container(
+                        constraints: const BoxConstraints(
+                          maxHeight: 240,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Colors.grey.shade300,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Scrollbar(
                           controller: _segmentsScrollController,
-                          primary: false,
-                          shrinkWrap: true,
-                          itemCount: audioExtractorVM.segments.length,
-                          itemBuilder: (context, index) {
-                            final s = audioExtractorVM.segments[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  child: Text('${index + 1}'),
+                          thumbVisibility: true,
+                          child: ListView.builder(
+                            controller: _segmentsScrollController,
+                            primary: false,
+                            shrinkWrap: true,
+                            itemCount:
+                                audioExtractorVM.segments.length,
+                            itemBuilder: (context, index) {
+                              final s =
+                                  audioExtractorVM.segments[index];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
-                                title: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      s.title,
-                                      maxLines: 4,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    child: Text('${index + 1}'),
+                                  ),
+                                  title: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s.title,
+                                        maxLines: 4,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
-                                      '${TimeFormatUtil.formatSeconds(s.endPosition)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.black87,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${TimeFormatUtil.formatSeconds(s.startPosition)} → '
+                                        '${TimeFormatUtil.formatSeconds(s.endPosition)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.black87,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                subtitle: Text(
-                                  'Duration: ${TimeFormatUtil.formatSeconds(s.duration)}'
-                                  '${s.silenceDuration > 0 ? ' + ${TimeFormatUtil.formatSeconds(s.silenceDuration)} silence' : ''}',
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.edit,
-                                        size: 20,
-                                      ),
-                                      onPressed: () async {
-                                       // After pressing 'Edit' icon button                                       
-                                        final updated =
-                                            await showDialog<
-                                              AudioSegment
-                                            >(
-                                              context: context,
-                                              builder:
-                                                  (
-                                                    _,
-                                                  ) => AddSegmentDialog(
-                                                    maxDuration:
-                                                        audioExtractorVM
-                                                            .audioFile
-                                                            .duration,
-                                                    existingSegment:
-                                                        s,
-                                                  ),
-                                            );
-                                        if (updated != null) {
-                                          audioExtractorVM.updateSegment(
-                                            index,
-                                            updated,
+                                    ],
+                                  ),
+                                  subtitle: Text(
+                                    'Duration: ${TimeFormatUtil.formatSeconds(s.duration)}'
+                                    '${s.silenceDuration > 0 ? ' + ${TimeFormatUtil.formatSeconds(s.silenceDuration)} silence' : ''}',
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.edit,
+                                          size: 20,
+                                        ),
+                                        onPressed: () async {
+                                          // After pressing 'Edit' icon button
+                                          final updated = await showDialog<
+                                            AudioSegment
+                                          >(
+                                            context: context,
+                                            builder:
+                                                (
+                                                  _,
+                                                ) => AddSegmentDialog(
+                                                  maxDuration:
+                                                      audioExtractorVM
+                                                          .audioFile
+                                                          .duration,
+                                                  existingSegment: s,
+                                                ),
                                           );
-                                        }
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete,
-                                        size: 20,
-                                        color: Colors.red,
+                                          if (updated != null) {
+                                            audioExtractorVM
+                                                .updateSegment(
+                                                  index,
+                                                  updated,
+                                                );
+                                          }
+                                        },
                                       ),
-                                      onPressed:
-                                          () => _confirmDeleteSegment(
-                                            context,
-                                            audioExtractorVM,
-                                            index,
-                                          ),
-                                    ),
-                                  ],
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          size: 20,
+                                          color: Colors.red,
+                                        ),
+                                        onPressed:
+                                            () =>
+                                                _confirmDeleteSegment(
+                                                  context,
+                                                  audioExtractorVM,
+                                                  index,
+                                                ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                       ),
-                    ),
 
                   if (audioExtractorVM.segments.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -690,8 +701,10 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         ),
                         TextButton.icon(
                           onPressed:
-                              () =>
-                                  _confirmClearSegments(context, audioExtractorVM),
+                              () => _confirmClearSegments(
+                                context,
+                                audioExtractorVM,
+                              ),
                           icon: const Icon(Icons.clear_all, size: 18),
                           label: const Text('Clear All'),
                           style: TextButton.styleFrom(
@@ -722,9 +735,13 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                         audioExtractorVM.extractionResult.message,
                         style: TextStyle(
                           color:
-                              audioExtractorVM.extractionResult.isError
+                              audioExtractorVM
+                                      .extractionResult
+                                      .isError
                                   ? Colors.red
-                                  : audioExtractorVM.extractionResult.isSuccess
+                                  : audioExtractorVM
+                                      .extractionResult
+                                      .isSuccess
                                   ? Colors.green[700]
                                   : Colors.black,
                           fontSize: 14,
@@ -734,7 +751,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                     ),
 
                   if (audioExtractorVM.extractionResult.isSuccess &&
-                      audioExtractorVM.extractionResult.outputPath != null) ...[
+                      audioExtractorVM.extractionResult.outputPath !=
+                          null) ...[
                     const Divider(height: 32),
                     const Text(
                       'Audio Player',
