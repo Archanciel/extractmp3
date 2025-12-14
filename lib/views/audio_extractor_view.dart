@@ -62,8 +62,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      const String path =
-          "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
+      late final String path;
+
+      if (Platform.isAndroid) {
+        path =
+            "/data/user/0/com.example.extractmp3/cache/file_picker/1765727850000/250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
+      } else {
+        path =
+            "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
+      }
+
       const String name =
           "250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.mp3";
       final double duration =
@@ -86,8 +94,16 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     required AudioExtractorVM audioExtractorVM,
   }) async {
     try {
-      const String jsonPath =
-          "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\comments\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
+      late final String jsonPath;
+
+      if (Platform.isAndroid) {
+        jsonPath =
+            "/data/user/0/com.example.extractmp3/cache/file_picker/1765728100802/250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
+      } else {
+        jsonPath =
+            "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\comments\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
+      }
+
       final List<Comment> comments =
           JsonDataService.loadListFromFile<Comment>(
             jsonPathFileName: jsonPath,
@@ -315,10 +331,19 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     BuildContext context,
     int index,
   ) async {
-    final vm = context.read<AudioExtractorVM>();
-    try {
-      const jsonPath =
+    final audioExtractorVMAudioExtractorVM =
+        context.read<AudioExtractorVM>();
+    late final String jsonPath;
+
+    if (Platform.isAndroid) {
+      jsonPath =
+          "/data/user/0/com.example.extractmp3/cache/file_picker/1765728100802/250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
+    } else {
+      jsonPath =
           "C:\\development\\flutter\\audiolearn\\test\\data\\audio\\playlists\\audio_learn_emi\\comments\\250116-232156-EMI  - Que font les morts dans l’au-delà  La révélation qui a tout changé ! 24-11-23.json";
+    }
+
+    try {
       final comments = JsonDataService.loadListFromFile<Comment>(
         jsonPathFileName: jsonPath,
         type: Comment,
@@ -358,9 +383,14 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           );
         }
       }
-      vm.updateMultiInputSegments(index, segments);
+      audioExtractorVMAudioExtractorVM.updateMultiInputSegments(
+        index,
+        segments,
+      );
     } catch (e) {
-      vm.setError('Error picking comments: $e');
+      audioExtractorVMAudioExtractorVM.setError(
+        'Error picking comments: $e',
+      );
     }
   }
 
