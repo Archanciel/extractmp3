@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:window_size/window_size.dart';
 import 'views/audio_extractor_view.dart';
 import 'viewmodels/audio_extractor_vm.dart';
-import 'viewmodels/audio_player_vm.dart';
+import 'viewmodels/extract_mp3_audio_player_vm.dart';
 
 Future<void> main() async {
   // Ensure Flutter is initialized
@@ -19,7 +19,9 @@ Future<void> main() async {
 
 /// If app runs on Windows, Linux or MacOS, set the app size
 /// and position.
-Future<void> _setWindowsAppSizeAndPosition({bool isTest = true}) async {
+Future<void> _setWindowsAppSizeAndPosition({
+  bool isTest = true,
+}) async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await getScreenList().then((List<Screen> screens) {
       // Assumez que vous voulez utiliser le premier écran (principal)
@@ -53,11 +55,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MP3 Extractor',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
       home: MultiProvider(
         providers: [
-          ChangeNotifierProvider(create: (context) => AudioExtractorVM()),
-          ChangeNotifierProvider(create: (context) => AudioPlayerVM()),
+          ChangeNotifierProvider(
+            create: (context) => AudioExtractorVM(),
+          ),
+          ChangeNotifierProvider(
+            create: (context) => ExtractMp3AudioPlayerVM(),
+          ),
         ],
         child: const AudioExtractorView(),
       ),

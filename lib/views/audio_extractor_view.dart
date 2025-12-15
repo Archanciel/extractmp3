@@ -10,7 +10,7 @@ import '../services/json_data_service.dart';
 import '../models/audio_segment.dart';
 import '../models/comment.dart';
 import '../viewmodels/audio_extractor_vm.dart';
-import '../viewmodels/audio_player_vm.dart';
+import '../viewmodels/extract_mp3_audio_player_vm.dart';
 import '../constants.dart';
 import 'widgets/add_segment_dialog.dart';
 import '../utils/time_format_util.dart';
@@ -186,7 +186,8 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   Future<void> _extractMP3({required BuildContext context}) async {
     final AudioExtractorVM audioExtractorVM =
         context.read<AudioExtractorVM>();
-    final AudioPlayerVM audioPlayerVM = context.read<AudioPlayerVM>();
+    final ExtractMp3AudioPlayerVM audioPlayerVM =
+        context.read<ExtractMp3AudioPlayerVM>();
 
     if (audioExtractorVM.multiInputs.isEmpty) {
       if (audioExtractorVM.audioFile.path == null) {
@@ -266,7 +267,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     BuildContext context,
     String filePath,
   ) async {
-    final audioPlayerVM = context.read<AudioPlayerVM>();
+    final audioPlayerVM = context.read<ExtractMp3AudioPlayerVM>();
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     try {
       await audioPlayerVM.loadFile(filePath: filePath);
@@ -292,10 +293,11 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           label: 'Repair',
           textColor: Colors.white,
           onPressed: () async {
-            final audioPlayerVM = Provider.of<AudioPlayerVM>(
-              context,
-              listen: false,
-            );
+            final audioPlayerVM =
+                Provider.of<ExtractMp3AudioPlayerVM>(
+                  context,
+                  listen: false,
+                );
             await audioPlayerVM.tryRepairPlayer();
           },
         ),
@@ -410,7 +412,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Consumer2<AudioExtractorVM, AudioPlayerVM>(
+        child: Consumer2<AudioExtractorVM, ExtractMp3AudioPlayerVM>(
           builder: (context, audioExtractorVM, audioPlayerVM, _) {
             return SingleChildScrollView(
               child: Column(
@@ -646,7 +648,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
   Widget _buildAudioPlayerControls({
     required BuildContext context,
     required AudioExtractorVM audioExtractorVM,
-    required AudioPlayerVM audioPlayerVM,
+    required ExtractMp3AudioPlayerVM audioPlayerVM,
   }) {
     return Column(
       children: [

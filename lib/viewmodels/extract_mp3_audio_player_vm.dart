@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-class AudioPlayerVM extends ChangeNotifier {
+class ExtractMp3AudioPlayerVM extends ChangeNotifier {
   // The audio player instance
   AudioPlayer? _player;
 
@@ -42,7 +42,7 @@ class AudioPlayerVM extends ChangeNotifier {
           ? _position.inMilliseconds / _duration.inMilliseconds
           : 0.0;
 
-  AudioPlayerVM() {
+  ExtractMp3AudioPlayerVM() {
     _initializePlayer();
   }
 
@@ -114,17 +114,24 @@ class AudioPlayerVM extends ChangeNotifier {
             _position = Duration.zero;
 
             // For Windows and Android, we need to reload the file to ensure it can be replayed
-            if ((Platform.isWindows || Platform.isAndroid) && _currentFilePath != null) {
+            if ((Platform.isWindows || Platform.isAndroid) &&
+                _currentFilePath != null) {
               try {
                 // Reload the source to ensure it's ready for replay
-                await _player!.setSource(DeviceFileSource(_currentFilePath!));
+                await _player!.setSource(
+                  DeviceFileSource(_currentFilePath!),
+                );
               } catch (e) {
-                debugPrint('Error reloading source after completion: $e');
+                debugPrint(
+                  'Error reloading source after completion: $e',
+                );
                 // If reloading fails, try to seek to beginning as fallback
                 try {
                   await _player!.seek(Duration.zero);
                 } catch (seekError) {
-                  debugPrint('Error seeking after completion: $seekError');
+                  debugPrint(
+                    'Error seeking after completion: $seekError',
+                  );
                 }
               }
             } else {
@@ -211,10 +218,13 @@ class AudioPlayerVM extends ChangeNotifier {
         await _player!.pause();
       } else {
         // For Windows, add a safety check
-        if (Platform.isWindows && _currentFilePath != null && !_isPlaying) {
+        if (Platform.isWindows &&
+            _currentFilePath != null &&
+            !_isPlaying) {
           // Check if we need to reload the file
-          if (_position == Duration.zero && _duration == Duration.zero) {
-            await loadFile(filePath:  _currentFilePath!);
+          if (_position == Duration.zero &&
+              _duration == Duration.zero) {
+            await loadFile(filePath: _currentFilePath!);
           }
         }
         await _player!.resume();
@@ -237,7 +247,8 @@ class AudioPlayerVM extends ChangeNotifier {
 
   // Seek by percentage (0.0 to 1.0)
   Future<void> seekByPercentage({required double percentage}) async {
-    if (!_isLoaded || _duration == Duration.zero || _player == null) return;
+    if (!_isLoaded || _duration == Duration.zero || _player == null)
+      return;
 
     final newPosition = Duration(
       milliseconds: (percentage * _duration.inMilliseconds).round(),
@@ -258,31 +269,31 @@ class AudioPlayerVM extends ChangeNotifier {
   Future<void> releaseCurrentFile() async {
     try {
       debugPrint('Releasing current file...');
-      
+
       if (_player != null) {
         // Stop playback if playing
         if (_isPlaying) {
           await _player!.stop();
         }
-        
+
         // Reset state
         _isPlaying = false;
         _isLoaded = false;
         _position = Duration.zero;
         _duration = Duration.zero;
-        
+
         // Dispose of the current player to release file handles
         _disposeCurrentPlayer();
-        
+
         // Wait a bit to ensure file handles are released
         await Future.delayed(const Duration(milliseconds: 200));
-        
+
         // Reinitialize the player for future use
         _initializePlayer();
-        
+
         debugPrint('File released successfully');
       }
-      
+
       _currentFilePath = null;
       notifyListeners();
     } catch (e) {
@@ -295,7 +306,7 @@ class AudioPlayerVM extends ChangeNotifier {
     _initializePlayer();
     if (_currentFilePath != null) {
       await Future.delayed(const Duration(milliseconds: 500));
-      await loadFile(filePath:  _currentFilePath!);
+      await loadFile(filePath: _currentFilePath!);
     }
   }
 
