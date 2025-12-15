@@ -46,23 +46,17 @@ class AudioExtractorService {
   // ────────────────────────────────────────────────────────────────────────────
 
   /// Returns media duration in seconds.
-  static Future<double> getAudioDuration({
-    required String filePath,
-  }) async {
+  static Future<double> getAudioDuration({required String filePath}) async {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
-        final session = await FFprobeKit.getMediaInformation(
-          filePath,
-        );
+        final session = await FFprobeKit.getMediaInformation(filePath);
         final info = session.getMediaInformation();
         final durationStr = info?.getDuration();
         if (durationStr != null) {
           final d = double.tryParse(durationStr);
           if (d != null && d > 0) return d;
         }
-        logger.w(
-          'FFprobeKit no duration for "$filePath", fallback to 60s',
-        );
+        logger.w('FFprobeKit no duration for "$filePath", fallback to 60s');
         return 60.0;
       } else {
         return await _probeDurationDesktop(filePath: filePath);
@@ -124,9 +118,7 @@ class AudioExtractorService {
         endTime: endTime,
         encoderBitrate: bitrate,
       );
-    } else if (Platform.isWindows ||
-        Platform.isLinux ||
-        Platform.isMacOS) {
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _extractOneDesktop(
         inputPath: inputPath,
         outputPath: outputPath,
@@ -169,11 +161,7 @@ class AudioExtractorService {
     final sess = await FFmpegKit.execute(cmd);
     final rc = await sess.getReturnCode();
     if (ReturnCode.isSuccess(rc)) {
-      return {
-        'success': true,
-        'message': 'OK',
-        'outputPath': outputPath,
-      };
+      return {'success': true, 'message': 'OK', 'outputPath': outputPath};
     } else {
       final logs = await sess.getAllLogsAsString();
       return {
@@ -207,11 +195,7 @@ class AudioExtractorService {
     ];
     final r = await Process.run('ffmpeg', args);
     if (r.exitCode == 0) {
-      return {
-        'success': true,
-        'message': 'OK',
-        'outputPath': outputPath,
-      };
+      return {'success': true, 'message': 'OK', 'outputPath': outputPath};
     } else {
       return {
         'success': false,
@@ -247,9 +231,7 @@ class AudioExtractorService {
         segments: segments,
         encoderBitrate: bitrate,
       );
-    } else if (Platform.isWindows ||
-        Platform.isLinux ||
-        Platform.isMacOS) {
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _extractSegmentsDesktop(
         inputPath: inputPath,
         outputPath: outputPath,
@@ -271,10 +253,8 @@ class AudioExtractorService {
     required List<AudioSegment> segments,
     required String encoderBitrate,
   }) async {
-    Directory? tmp; // ← Track temp directory for cleanup
-
     try {
-      tmp = await _tempDir(); // ← Creates unique directory now
+      final tmp = await _tempDir();
       final parts = <String>[];
 
       for (int i = 0; i < segments.length; i++) {
@@ -341,12 +321,9 @@ class AudioExtractorService {
         }
       }
 
-      final listFile = File('${tmp.path}/concat.txt')
-        ..writeAsStringSync(
-          parts
-              .map((p) => "file '${p.replaceAll("'", "'\\''")}'")
-              .join('\n'),
-        );
+      final listFile = File('${tmp.path}/concat.txt')..writeAsStringSync(
+        parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'),
+      );
 
       final concatCmd = [
         '-f',
@@ -385,15 +362,6 @@ class AudioExtractorService {
         'message': 'Plugin error: $e',
         'outputPath': null,
       };
-    } finally {
-      // ✅ CRITICAL: Clean up temp directory
-      if (tmp != null) {
-        try {
-          tmp.deleteSync(recursive: true);
-        } catch (e) {
-          logger.w('Failed to clean up temp directory: $e');
-        }
-      }
     }
   }
 
@@ -404,9 +372,7 @@ class AudioExtractorService {
     required String encoderBitrate,
   }) async {
     try {
-      final tempDir = Directory.systemTemp.createTempSync(
-        'mp3_extract_',
-      );
+      final tempDir = Directory.systemTemp.createTempSync('mp3_extract_');
       final partFiles = <String>[];
 
       try {
@@ -435,8 +401,7 @@ class AudioExtractorService {
           if (r.exitCode != 0) {
             return {
               'success': false,
-              'message':
-                  'Failed to extract segment ${i + 1}: ${r.stderr}',
+              'message': 'Failed to extract segment ${i + 1}: ${r.stderr}',
               'outputPath': null,
             };
           }
@@ -486,9 +451,7 @@ class AudioExtractorService {
         concatList.writeAsStringSync(
           partFiles
               .map((f) {
-                String p = f
-                    .replaceAll('\\', '/')
-                    .replaceAll("'", "'\\''");
+                String p = f.replaceAll('\\', '/').replaceAll("'", "'\\''");
                 return "file '$p'";
               })
               .join('\n'),
@@ -512,16 +475,14 @@ class AudioExtractorService {
         ];
 
         final concatResult = await Process.run('ffmpeg', concatArgs);
-        if (concatResult.exitCode == 0 &&
-            File(outputPath).existsSync()) {
+        if (concatResult.exitCode == 0 && File(outputPath).existsSync()) {
           return {
             'success': true,
             'message': 'Extraction successful',
             'outputPath': outputPath,
           };
         } else {
-          final stderr =
-              concatResult.stderr?.toString() ?? 'Unknown error';
+          final stderr = concatResult.stderr?.toString() ?? 'Unknown error';
           return {
             'success': false,
             'message': 'Concat failed: $stderr',
@@ -566,9 +527,7 @@ class AudioExtractorService {
         outputPath: outputPath,
         encoderBitrate: encoderBitrate,
       );
-    } else if (Platform.isWindows ||
-        Platform.isLinux ||
-        Platform.isMacOS) {
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return _extractMultipleDesktop(
         inputs: inputs,
         outputPath: outputPath,
@@ -588,10 +547,8 @@ class AudioExtractorService {
     required String outputPath,
     required String encoderBitrate,
   }) async {
-    Directory? tmp; // ← Track for cleanup
-
     try {
-      tmp = await _tempDir(); // ← Creates unique directory
+      final tmp = await _tempDir();
       final parts = <String>[];
       int partIndex = 0;
 
@@ -641,9 +598,7 @@ class AudioExtractorService {
           final silDur =
               silUser > 0
                   ? silUser
-                  : (needDefaultBetweenSegments
-                      ? defaultSilenceDuration
-                      : 0.0);
+                  : (needDefaultBetweenSegments ? defaultSilenceDuration : 0.0);
 
           if (silDur > 0) {
             final silPath = '${tmp.path}/m_sil_${partIndex++}.mp3';
@@ -662,9 +617,7 @@ class AudioExtractorService {
               '-y',
             ].join(' ');
             final silSess = await FFmpegKit.execute(silCmd);
-            if (!ReturnCode.isSuccess(
-              await silSess.getReturnCode(),
-            )) {
+            if (!ReturnCode.isSuccess(await silSess.getReturnCode())) {
               return {
                 'success': false,
                 'message':
@@ -677,8 +630,7 @@ class AudioExtractorService {
         }
 
         // Inter-file silence using your constant
-        if (i < inputs.length - 1 &&
-            kDefaultSilenceDurationBetweenMp3 > 0) {
+        if (i < inputs.length - 1 && kDefaultSilenceDurationBetweenMp3 > 0) {
           final interPath = '${tmp.path}/m_inter_${partIndex++}.mp3';
           final interCmd = [
             '-f',
@@ -695,9 +647,7 @@ class AudioExtractorService {
             '-y',
           ].join(' ');
           final interSess = await FFmpegKit.execute(interCmd);
-          if (!ReturnCode.isSuccess(
-            await interSess.getReturnCode(),
-          )) {
+          if (!ReturnCode.isSuccess(await interSess.getReturnCode())) {
             return {
               'success': false,
               'message':
@@ -709,12 +659,9 @@ class AudioExtractorService {
         }
       }
 
-      final listFile = File('${tmp.path}/m_concat.txt')
-        ..writeAsStringSync(
-          parts
-              .map((p) => "file '${p.replaceAll("'", "'\\''")}'")
-              .join('\n'),
-        );
+      final listFile = File('${tmp.path}/m_concat.txt')..writeAsStringSync(
+        parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'),
+      );
 
       final concatCmd = [
         '-f',
@@ -753,15 +700,6 @@ class AudioExtractorService {
         'message': 'Plugin error: $e',
         'outputPath': null,
       };
-    } finally {
-      // ✅ CRITICAL: Clean up temp directory
-      if (tmp != null) {
-        try {
-          tmp.deleteSync(recursive: true);
-        } catch (e) {
-          logger.w('Failed to clean up temp directory: $e');
-        }
-      }
     }
   }
 
@@ -850,8 +788,7 @@ class AudioExtractorService {
           }
         }
 
-        if (i < inputs.length - 1 &&
-            kDefaultSilenceDurationBetweenMp3 > 0) {
+        if (i < inputs.length - 1 && kDefaultSilenceDurationBetweenMp3 > 0) {
           final interPath =
               '${tempDir.path}${Platform.pathSeparator}m_inter_${idx++}.mp3';
           final interArgs = [
@@ -888,9 +825,7 @@ class AudioExtractorService {
       concatList.writeAsStringSync(
         partFiles
             .map((f) {
-              final p = f
-                  .replaceAll('\\', '/')
-                  .replaceAll("'", "'\\''");
+              final p = f.replaceAll('\\', '/').replaceAll("'", "'\\''");
               return "file '$p'";
             })
             .join('\n'),
@@ -947,7 +882,6 @@ class AudioExtractorService {
   static String _q(String path) => '"${path.replaceAll('\\', '/')}"';
 
   static Future<Directory> _tempDir() async {
-    // Create unique temp directory for each extraction
-    return Directory.systemTemp.createTempSync('mp3_extract_mobile_');
+    return Directory.systemTemp;
   }
 }

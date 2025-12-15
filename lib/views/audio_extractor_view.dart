@@ -196,18 +196,24 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
     }
 
     try {
-      if (Platform.isWindows && audioPlayerVM.isLoaded) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Preparing extraction...'),
-            duration: Duration(seconds: 1),
-          ),
-        );
+      // ✅ NEW - Release on ALL platforms
+      if (audioPlayerVM.isLoaded) {
+        if (Platform.isWindows) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Preparing extraction...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
 
         await audioPlayerVM.releaseCurrentFile();
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
 
+        if (Platform.isWindows) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+      
       final String base = PathUtil.removeExtension(
         audioExtractorVM.audioFile.name ?? 'extract',
       );
