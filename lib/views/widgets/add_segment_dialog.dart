@@ -22,6 +22,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   late final TextEditingController _startController;
   late final TextEditingController _endController;
   late final TextEditingController _silenceController;
+  late final TextEditingController _soundReductionPositionController;
+  late final TextEditingController _soundReductionDurationController;
   late final TextEditingController _titleController;
 
   @override
@@ -42,6 +44,16 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         widget.existingSegment?.silenceDuration ?? 0,
       ),
     );
+    _soundReductionPositionController = TextEditingController(
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.silenceDuration ?? 0,
+      ),
+    );
+    _soundReductionDurationController = TextEditingController(
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.silenceDuration ?? 0,
+      ),
+    );
     _titleController = TextEditingController(
       text: (widget.existingSegment?.title ?? ''),
     );
@@ -52,6 +64,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     _startController.dispose();
     _endController.dispose();
     _silenceController.dispose();
+    _soundReductionPositionController.dispose();
+    _soundReductionDurationController.dispose();
     _titleController.dispose();
     super.dispose();
   }
@@ -61,6 +75,12 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     final end = TimeFormatUtil.parseFlexible(_endController.text);
     final silence = TimeFormatUtil.parseFlexible(
       _silenceController.text,
+    );
+    final soundReductionPosition = TimeFormatUtil.parseFlexible(
+      _soundReductionPositionController.text,
+    );
+    final soundReductionDuration = TimeFormatUtil.parseFlexible(
+      _soundReductionDurationController.text,
     );
     final title = _titleController.text.trim();
 
@@ -90,6 +110,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         startPosition: start,
         endPosition: end,
         silenceDuration: silence,
+        soundReductionPosition: soundReductionPosition,
+        soundReductionDuration: soundReductionDuration,
         title: title,
       ),
     );
@@ -154,7 +176,26 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
               decoration: const InputDecoration(
                 labelText: 'Silence Duration After (h:mm:ss.t)',
                 hintText: '0:00.0',
-                helperText: 'Padding appended after this segment',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _soundReductionPositionController,
+              inputFormatters: [TimeTextInputFormatter()],
+              decoration: const InputDecoration(
+                labelText: 'Sound Reduction Position (h:mm:ss.t)',
+                hintText: '0:00.0',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _soundReductionDurationController,
+              inputFormatters: [TimeTextInputFormatter()],
+              decoration: const InputDecoration(
+                labelText: 'Sound Reduction Duration (h:mm:ss.t)',
+                hintText: '0:00.0',
                 border: OutlineInputBorder(),
               ),
             ),

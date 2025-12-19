@@ -630,6 +630,22 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                           color: Colors.black87,
                                         ),
                                       ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Sound Reduction Position: ${TimeFormatUtil.formatSeconds(s.soundReductionPosition)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Sound Reduction Duration: ${TimeFormatUtil.formatSeconds(s.soundReductionDuration)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   subtitle: Text(
