@@ -44,14 +44,16 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         widget.existingSegment?.silenceDuration ?? 0,
       ),
     );
+    // FIX: Initialize with soundReductionPosition, not silenceDuration
     _soundReductionPositionController = TextEditingController(
       text: TimeFormatUtil.formatSeconds(
-        widget.existingSegment?.silenceDuration ?? 0,
+        widget.existingSegment?.soundReductionPosition ?? 0,
       ),
     );
+    // FIX: Initialize with soundReductionDuration, not silenceDuration
     _soundReductionDurationController = TextEditingController(
       text: TimeFormatUtil.formatSeconds(
-        widget.existingSegment?.silenceDuration ?? 0,
+        widget.existingSegment?.soundReductionDuration ?? 0,
       ),
     );
     _titleController = TextEditingController(
@@ -99,6 +101,25 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     if (silence < 0) {
       _showError('Silence duration cannot be negative');
       return;
+    }
+    if (soundReductionDuration < 0) {
+      _showError('Sound reduction duration cannot be negative');
+      return;
+    }
+    // Validate sound reduction position
+    if (soundReductionPosition > 0 && soundReductionDuration > 0) {
+      if (soundReductionPosition < start) {
+        _showError('Sound reduction position must be within the segment (>= start position)');
+        return;
+      }
+      if (soundReductionPosition >= end) {
+        _showError('Sound reduction position must be before the end position');
+        return;
+      }
+      if (soundReductionPosition + soundReductionDuration > end) {
+        _showError('Sound reduction must complete before the segment ends');
+        return;
+      }
     }
     if (title.isEmpty) {
       _showError('Title cannot be empty');
@@ -180,13 +201,22 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
               ),
             ),
             const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text(
+              'Volume Fade-Out (optional)',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _soundReductionPositionController,
               inputFormatters: [TimeTextInputFormatter()],
               decoration: const InputDecoration(
-                labelText: 'Sound Reduction Position (h:mm:ss.t)',
-                hintText: '0:00.0',
+                labelText: 'Fade Start Position (h:mm:ss.t)',
+                hintText: '0:00.0 (absolute time in source file)',
                 border: OutlineInputBorder(),
+                helperText: 'Position where volume starts fading to 0',
+                helperMaxLines: 2,
               ),
             ),
             const SizedBox(height: 12),
@@ -194,9 +224,11 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
               controller: _soundReductionDurationController,
               inputFormatters: [TimeTextInputFormatter()],
               decoration: const InputDecoration(
-                labelText: 'Sound Reduction Duration (h:mm:ss.t)',
+                labelText: 'Fade Duration (h:mm:ss.t)',
                 hintText: '0:00.0',
                 border: OutlineInputBorder(),
+                helperText: 'Duration to fade volume from 100% to 0%',
+                helperMaxLines: 2,
               ),
             ),
           ],
