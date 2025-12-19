@@ -42,6 +42,57 @@ class AudioExtractorService {
   static const double defaultSilenceDuration = 1.0;
 
   // ────────────────────────────────────────────────────────────────────────────
+  // Helper: Build audio filter for fade-out
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /// Builds an audio filter string for FFmpeg.
+  /// 
+  /// Parameters:
+  /// - segment: The audio segment with fade parameters
+  /// - gainDb: Optional volume gain in dB (0.0 = no change)
+  /// 
+  /// Returns a filter string like "volume=3dB,afade=t=out:st=50:d=10"
+  /// or empty string if no filters needed.
+  static String _buildAudioFilter({
+    required AudioSegment segment,
+    double gainDb = 0.0,
+  }) {
+    final List<String> filters = [];
+    
+    // Add volume filter if gain is specified
+    if (gainDb.abs() > 1e-6) {
+      filters.add('volume=${gainDb}dB');
+    }
+    
+    // Add fade-out filter if specified
+    if (segment.soundReductionDuration > 0) {
+      // Calculate relative position of fade start within the segment
+      final segmentDuration = segment.endPosition - segment.startPosition;
+      final fadeStartRelative = segment.soundReductionPosition - segment.startPosition;
+      
+      // Validate fade parameters
+      if (fadeStartRelative >= 0 && fadeStartRelative < segmentDuration) {
+        final fadeDuration = segment.soundReductionDuration;
+        
+        // Ensure fade doesn't extend beyond segment end
+        final maxFadeDuration = segmentDuration - fadeStartRelative;
+        final actualFadeDuration = fadeDuration > maxFadeDuration 
+            ? maxFadeDuration 
+            : fadeDuration;
+        
+        if (actualFadeDuration > 0) {
+          // Format with precision to avoid rounding issues
+          final stStr = fadeStartRelative.toStringAsFixed(3);
+          final dStr = actualFadeDuration.toStringAsFixed(3);
+          filters.add('afade=t=out:st=$stStr:d=$dStr');
+        }
+      }
+    }
+    
+    return filters.isEmpty ? '' : filters.join(',');
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Duration
   // ────────────────────────────────────────────────────────────────────────────
 
@@ -261,6 +312,9 @@ class AudioExtractorService {
         final s = segments[i];
         final segPath = '${tmp.path}/segment_$i.mp3';
 
+        // Build audio filter for this segment
+        final audioFilter = _buildAudioFilter(segment: s, gainDb: 0.0);
+
         final cut = [
           '-ss',
           s.startPosition.toString(),
@@ -268,6 +322,8 @@ class AudioExtractorService {
           s.endPosition.toString(),
           '-i',
           _q(inputPath),
+          if (audioFilter.isNotEmpty) '-af',
+          if (audioFilter.isNotEmpty) '"$audioFilter"',
           '-c:a',
           'libmp3lame',
           '-b:a',
@@ -275,6 +331,7 @@ class AudioExtractorService {
           _q(segPath),
           '-y',
         ].join(' ');
+        
         final cutSess = await FFmpegKit.execute(cut);
         if (!ReturnCode.isSuccess(await cutSess.getReturnCode())) {
           return {
@@ -381,6 +438,9 @@ class AudioExtractorService {
           final segPath =
               '${tempDir.path}${Platform.pathSeparator}segment_$i.mp3';
 
+          // Build audio filter for this segment
+          final audioFilter = _buildAudioFilter(segment: s, gainDb: 0.0);
+
           final args = [
             '-i',
             inputPath,
@@ -388,6 +448,8 @@ class AudioExtractorService {
             s.startPosition.toString(),
             '-to',
             s.endPosition.toString(),
+            if (audioFilter.isNotEmpty) '-af',
+            if (audioFilter.isNotEmpty) audioFilter,
             '-c:a',
             'libmp3lame',
             '-b:a',
@@ -397,6 +459,7 @@ class AudioExtractorService {
             '-v',
             'error',
           ];
+          
           final r = await Process.run('ffmpeg', args);
           if (r.exitCode != 0) {
             return {
@@ -559,9 +622,10 @@ class AudioExtractorService {
           final s = inp.segments[j];
 
           final cutPath = '${tmp.path}/m_cut_${partIndex++}.mp3';
-          final hasGain = inp.gainDb.abs() > 1e-6;
+          
+          // Build audio filter with both gain and fade-out
+          final audioFilter = _buildAudioFilter(segment: s, gainDb: inp.gainDb);
 
-          // Apply per-input volume if gainDb != 0.0
           final cutCmd = [
             '-ss',
             s.startPosition.toString(),
@@ -569,8 +633,8 @@ class AudioExtractorService {
             s.endPosition.toString(),
             '-i',
             _q(inp.inputPath),
-            if (hasGain) '-filter:a',
-            if (hasGain) '"volume=${inp.gainDb}dB"',
+            if (audioFilter.isNotEmpty) '-filter:a',
+            if (audioFilter.isNotEmpty) '"$audioFilter"',
             '-c:a',
             'libmp3lame',
             '-b:a',
@@ -715,13 +779,16 @@ class AudioExtractorService {
     try {
       for (int i = 0; i < inputs.length; i++) {
         final inp = inputs[i];
-        final hasGain = inp.gainDb.abs() > 1e-6;
 
         for (int j = 0; j < inp.segments.length; j++) {
           final s = inp.segments[j];
 
           final cutPath =
               '${tempDir.path}${Platform.pathSeparator}m_cut_${idx++}.mp3';
+          
+          // Build audio filter with both gain and fade-out
+          final audioFilter = _buildAudioFilter(segment: s, gainDb: inp.gainDb);
+          
           final cutArgs = <String>[
             '-i',
             inp.inputPath,
@@ -729,8 +796,8 @@ class AudioExtractorService {
             s.startPosition.toString(),
             '-to',
             s.endPosition.toString(),
-            if (hasGain) '-filter:a',
-            if (hasGain) 'volume=${inp.gainDb}dB',
+            if (audioFilter.isNotEmpty) '-filter:a',
+            if (audioFilter.isNotEmpty) audioFilter,
             '-c:a',
             'libmp3lame',
             '-b:a',
@@ -740,6 +807,7 @@ class AudioExtractorService {
             '-v',
             'error',
           ];
+          
           final r = await Process.run('ffmpeg', cutArgs);
           if (r.exitCode != 0) {
             return {
