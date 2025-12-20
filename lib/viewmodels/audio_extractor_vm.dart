@@ -58,6 +58,13 @@ class AudioExtractorVM extends ChangeNotifier {
       silenceDuration: TimeFormatUtil.normalizeToTenths(
         segment.silenceDuration,
       ),
+      // FIX: Normalize sound reduction values too
+      soundReductionPosition: TimeFormatUtil.normalizeToTenths(
+        segment.soundReductionPosition,
+      ),
+      soundReductionDuration: TimeFormatUtil.normalizeToTenths(
+        segment.soundReductionDuration,
+      ),
       title: segment.title,
     );
     _segments.add(normalized);
@@ -76,8 +83,13 @@ class AudioExtractorVM extends ChangeNotifier {
         silenceDuration: TimeFormatUtil.normalizeToTenths(
           segment.silenceDuration,
         ),
-        soundReductionPosition: segment.soundReductionPosition,
-        soundReductionDuration: segment.soundReductionDuration,
+        // FIX: Normalize sound reduction values too
+        soundReductionPosition: TimeFormatUtil.normalizeToTenths(
+          segment.soundReductionPosition,
+        ),
+        soundReductionDuration: TimeFormatUtil.normalizeToTenths(
+          segment.soundReductionDuration,
+        ),
         title: segment.title,
       );
       _segments[index] = normalized;
@@ -182,6 +194,13 @@ class AudioExtractorVM extends ChangeNotifier {
                 silenceDuration: TimeFormatUtil.normalizeToTenths(
                   s.silenceDuration,
                 ),
+                // FIX: Normalize sound reduction values too
+                soundReductionPosition: TimeFormatUtil.normalizeToTenths(
+                  s.soundReductionPosition,
+                ),
+                soundReductionDuration: TimeFormatUtil.normalizeToTenths(
+                  s.soundReductionDuration,
+                ),
                 title: s.title,
               ),
             )
@@ -237,6 +256,13 @@ class AudioExtractorVM extends ChangeNotifier {
                 ),
                 silenceDuration: TimeFormatUtil.normalizeToTenths(
                   s.silenceDuration,
+                ),
+                // FIX: Normalize sound reduction values too
+                soundReductionPosition: TimeFormatUtil.normalizeToTenths(
+                  s.soundReductionPosition,
+                ),
+                soundReductionDuration: TimeFormatUtil.normalizeToTenths(
+                  s.soundReductionDuration,
                 ),
                 title: s.title,
               ),
