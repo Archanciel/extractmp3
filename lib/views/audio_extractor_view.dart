@@ -213,7 +213,7 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
           await Future.delayed(const Duration(milliseconds: 500));
         }
       }
-      
+
       final String base = PathUtil.removeExtension(
         audioExtractorVM.audioFile.name ?? 'extract',
       );
@@ -631,6 +631,17 @@ class _AudioExtractorViewState extends State<AudioExtractorView> {
                                         ),
                                       ),
                                       const SizedBox(height: 2),
+                                      if (s.fadeInDuration > 0) ...[
+                                        Text(
+                                          'Fade-In Duration: ${TimeFormatUtil.formatSeconds(s.fadeInDuration)}',
+                                          style: const TextStyle(
+                                            fontWeight:
+                                                FontWeight.w500,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                      ],
                                       Text(
                                         'Sound Reduction Position: ${TimeFormatUtil.formatSeconds(s.soundReductionPosition)}',
                                         style: const TextStyle(

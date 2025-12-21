@@ -22,6 +22,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
   late final TextEditingController _startController;
   late final TextEditingController _endController;
   late final TextEditingController _silenceController;
+  late final TextEditingController _fadeInDurationController; // NEW
   late final TextEditingController _soundReductionPositionController;
   late final TextEditingController _soundReductionDurationController;
   late final TextEditingController _titleController;
@@ -42,6 +43,12 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     _silenceController = TextEditingController(
       text: TimeFormatUtil.formatSeconds(
         widget.existingSegment?.silenceDuration ?? 0,
+      ),
+    );
+    // NEW: Fade-in duration controller
+    _fadeInDurationController = TextEditingController(
+      text: TimeFormatUtil.formatSeconds(
+        widget.existingSegment?.fadeInDuration ?? 0,
       ),
     );
     // FIX: Initialize with soundReductionPosition, not silenceDuration
@@ -66,6 +73,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     _startController.dispose();
     _endController.dispose();
     _silenceController.dispose();
+    _fadeInDurationController.dispose(); // NEW
     _soundReductionPositionController.dispose();
     _soundReductionDurationController.dispose();
     _titleController.dispose();
@@ -77,6 +85,10 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     final end = TimeFormatUtil.parseFlexible(_endController.text);
     final silence = TimeFormatUtil.parseFlexible(
       _silenceController.text,
+    );
+    final fadeInDuration = TimeFormatUtil.parseFlexible(
+      // NEW
+      _fadeInDurationController.text,
     );
     final soundReductionPosition = TimeFormatUtil.parseFlexible(
       _soundReductionPositionController.text,
@@ -102,6 +114,17 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
       _showError('Silence duration cannot be negative');
       return;
     }
+    if (fadeInDuration < 0) {
+      // NEW validation
+      _showError('Fade-in duration cannot be negative');
+      return;
+    }
+    final segmentDuration = end - start;
+    if (fadeInDuration > segmentDuration) {
+      // NEW validation
+      _showError('Fade-in duration cannot exceed segment duration');
+      return;
+    }
     if (soundReductionDuration < 0) {
       _showError('Sound reduction duration cannot be negative');
       return;
@@ -109,15 +132,21 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
     // Validate sound reduction position
     if (soundReductionPosition > 0 && soundReductionDuration > 0) {
       if (soundReductionPosition < start) {
-        _showError('Sound reduction position must be within the segment (>= start position)');
+        _showError(
+          'Sound reduction position must be within the segment (>= start position)',
+        );
         return;
       }
       if (soundReductionPosition >= end) {
-        _showError('Sound reduction position must be before the end position');
+        _showError(
+          'Sound reduction position must be before the end position',
+        );
         return;
       }
       if (soundReductionPosition + soundReductionDuration > end) {
-        _showError('Sound reduction must complete before the segment ends');
+        _showError(
+          'Sound reduction must complete before the segment ends',
+        );
         return;
       }
     }
@@ -131,6 +160,7 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
         startPosition: start,
         endPosition: end,
         silenceDuration: silence,
+        fadeInDuration: fadeInDuration, // NEW
         soundReductionPosition: soundReductionPosition,
         soundReductionDuration: soundReductionDuration,
         title: title,
@@ -204,8 +234,34 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
             const Divider(),
             const SizedBox(height: 8),
             const Text(
+              'Volume Fade-In (optional)',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _fadeInDurationController,
+              inputFormatters: [TimeTextInputFormatter()],
+              decoration: const InputDecoration(
+                labelText: 'Fade-In Duration (h:mm:ss.t)',
+                hintText: '0:00.0',
+                border: OutlineInputBorder(),
+                helperText:
+                    'Duration to fade volume from 0% to 100% at segment start',
+                helperMaxLines: 2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text(
               'Volume Fade-Out (optional)',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -215,7 +271,8 @@ class _AddSegmentDialogState extends State<AddSegmentDialog> {
                 labelText: 'Fade Start Position (h:mm:ss.t)',
                 hintText: '0:00.0 (absolute time in source file)',
                 border: OutlineInputBorder(),
-                helperText: 'Position where volume starts fading to 0',
+                helperText:
+                    'Position where volume starts fading to 0',
                 helperMaxLines: 2,
               ),
             ),
